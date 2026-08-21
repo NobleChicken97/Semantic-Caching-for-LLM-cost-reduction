@@ -1,0 +1,1 @@
+# Semantic Cache Proxy — Phase 1: Exact-String-Match Caching
