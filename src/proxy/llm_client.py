@@ -2,41 +2,53 @@
 
 from __future__ import annotations
 
-import json
 import time
 import uuid
-from typing import Any, Dict
+from typing import Any
 
 import httpx
 
-from .config import settings
+from .config import get_settings
 
 
 async def forward_to_llm(
-    request_body: Dict[str, Any],
-) -> tuple[Dict[str, Any], float]:
+    request_body: dict[str, Any],
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> tuple[dict[str, Any], float]:
     """Forward a chat completion request to the configured LLM backend.
+
+    ``client`` — an existing AsyncClient to reuse. The FastAPI app passes
+    its lifespan-managed shared client here (one connection pool for all
+    requests); when None, a one-off client is created and closed for this
+    call so direct/standalone callers keep working.
 
     Returns (response_dict, latency_seconds).
     """
-    if settings.mock_llm:
+    cfg = get_settings()
+
+    if cfg.mock_llm:
         return _mock_response(request_body), 0.02
 
     headers = {
-        "Authorization": f"Bearer {settings.llm_api_key}",
+        "Authorization": f"Bearer {cfg.llm_api_key}",
         "Content-Type": "application/json",
     }
-    url = f"{settings.llm_api_base_url}/chat/completions"
+    url = f"{cfg.llm_api_base_url}/chat/completions"
 
     start = time.perf_counter()
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    if client is not None:
         resp = await client.post(url, json=request_body, headers=headers)
         resp.raise_for_status()
-        elapsed = time.perf_counter() - start
-        return resp.json(), elapsed
+        return resp.json(), time.perf_counter() - start
+
+    async with httpx.AsyncClient(timeout=120.0) as own_client:
+        resp = await own_client.post(url, json=request_body, headers=headers)
+        resp.raise_for_status()
+        return resp.json(), time.perf_counter() - start
 
 
-def _mock_response(request_body: Dict[str, Any]) -> Dict[str, Any]:
+def _mock_response(request_body: dict[str, Any]) -> dict[str, Any]:
     """Return a deterministic fake response for testing without an API key.
 
     The mock response echoes the last user message so a human can verify

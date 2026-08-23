@@ -131,7 +131,7 @@
 
 - [x] Choose platform: **Render blueprint (`render.yaml`) + Railway/Heroku Procfile both provided** — pick either
 - [x] Create `Procfile` (Railway/Heroku) and `render.yaml` (Render Blueprint, health check `/health`)
-- [x] Add `Dockerfile` + `.dockerignore`: CPU-only torch wheels (~2.2 GB image vs ~4+), BGE model baked in for ~14 s cold starts. **Verified locally**: build succeeds; container healthy; MISS→HIT flow + dashboard all work inside it
+- [x] Add `Dockerfile` + `.dockerignore`: CPU-only torch (`torch==2.5.1+cpu` pin, image measured **2.11 GB** on 2026-08-23 vs ~4+ with CUDA), BGE model baked in for ~14 s cold starts. **Verified locally**: build succeeds; container healthy; MISS→HIT flow + dashboard all work inside it
 - [x] Deployment guide added to README (incl. free-tier caveats: ephemeral SQLite, 512 MB RAM limit)
 - [ ] Set environment variables on deployment platform ← **needs your account** (defaults to `MOCK_LLM=true` = zero-spend demo)
 - [ ] Set spend cap on LLM API key for public deployment ← **do this BEFORE flipping `MOCK_LLM=false`**
@@ -300,7 +300,7 @@ Semantic caching layer for LLM cost reduction/
 - [x] Update `uvicorn.run()` call in `main.py` → `"src.proxy.main:app"`
 - [x] Test imports unchanged (`from proxy.… import`) — resolved via pytest `pythonpath = ["src"]`
 - [x] `conftest.py` imports unchanged
-- [x] All 45 tests pass after restructuring
+- [x] All 45 tests pass after restructuring *(now 68 after the 2026-08-23 review-fix round)*
 
 #### Step 8 — Commit the restructure
 - [ ] Stage all changes ← **awaiting user (no-commit instruction)**

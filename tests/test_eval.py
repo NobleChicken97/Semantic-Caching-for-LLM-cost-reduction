@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import itertools
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -19,15 +19,17 @@ def isolated_db(monkeypatch):
 
     monkeypatch.setenv("CACHE_DB_PATH", path)
 
-    from proxy.config import settings
+    from proxy.config import get_settings
 
-    monkeypatch.setattr(settings, "cache_db_path", path)
+    get_settings.cache_clear()
 
     from proxy.database import init_db
 
     init_db()
 
     yield path
+
+    get_settings.cache_clear()
 
     try:
         os.unlink(path)
@@ -123,7 +125,7 @@ class TestThresholdSweep:
         thresholds = [0.70, 0.75, 0.80, 0.85, 0.90, 0.95]
         results = run_threshold_sweep(thresholds)
         recalls = [r.recall for r in results]
-        for prev, curr in zip(recalls, recalls[1:]):
+        for prev, curr in itertools.pairwise(recalls):
             assert curr <= prev + 1e-9
 
     def test_empty_thresholds_returns_empty_results(self):

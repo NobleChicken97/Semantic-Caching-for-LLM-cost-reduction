@@ -7,10 +7,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# CPU-only torch wheels — avoids pulling ~2 GB of CUDA libs into the image
+# CPU-only torch — avoids pulling ~2 GB of CUDA libs into the image.
+# Install a PINNED +cpu build from the PyTorch CPU index BEFORE
+# requirements.txt: pip then sees torch as already satisfied and cannot
+# resolve a CUDA build from PyPI (--extra-index-url alone does not
+# guarantee which wheel wins; an explicit pin does).
 COPY requirements.txt .
-RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu \
-    -r requirements.txt
+RUN pip install --no-cache-dir torch==2.5.1+cpu \
+        --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
 

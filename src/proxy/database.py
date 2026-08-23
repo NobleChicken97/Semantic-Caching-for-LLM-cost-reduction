@@ -1,14 +1,13 @@
 """SQLite database setup, migrations, and helper queries."""
 
 import sqlite3
-import time
 from pathlib import Path
 
-from .config import settings
+from .config import get_settings
 
 
 def _db_path() -> Path:
-    return Path(settings.cache_db_path)
+    return Path(get_settings().cache_db_path)
 
 
 def get_connection() -> sqlite3.Connection:
@@ -46,7 +45,10 @@ def init_db() -> None:
                 timestamp         REAL    NOT NULL,
                 prompt_text       TEXT    NOT NULL,
                 prompt_hash       TEXT    NOT NULL,
-                outcome           TEXT    NOT NULL CHECK(outcome IN ('HIT','MISS','BYPASS')),
+                -- 'ERROR' marks failed upstream calls (no fabricated cost/tokens).
+                -- NOTE: CREATE TABLE IF NOT EXISTS means pre-existing databases
+                -- keep the old 3-outcome constraint until recreated.
+                outcome           TEXT    NOT NULL CHECK(outcome IN ('HIT','MISS','BYPASS','ERROR')),
                 matched_entry_id  INTEGER,
                 similarity_score  REAL,
                 latency_ms        REAL    NOT NULL,

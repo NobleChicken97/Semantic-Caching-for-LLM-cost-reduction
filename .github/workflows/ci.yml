@@ -1,0 +1,202 @@
+# Continuous Integration for the Semantic Cache Proxy.
+#
+# Jobs:
+#   lint           - ruff across src/tests/scripts (fast fail).
+#   test           - full pytest suite on py3.10/3.11/3.12 (ubuntu) + 3.11
+#                    (windows, dev-machine parity), with CPU-only torch,
+#                    HuggingFace model cache, coverage artifact, plus a
+#                    black-box smoke suite against a live uvicorn server.
+#   docker-smoke   - builds the production image (GHA layer cache), proves
+#                    torch is CPU-only inside it, then runs the same black-box
+#                    smoke suite against the containerized server.
+#   security-audit - pip-audit over requirements.txt. Informational: findings
+#                    are surfaced as a failed-but-non-blocking check because
+#                    transitive CVEs (torch/fastapi ecosystem) often have no
+#                    clean upgrade path and should not gate routine PRs.
+#
+# Safety: MOCK_LLM=true is set workflow-wide, so CI can never spend money
+# on upstream LLM APIs (mirrors the README's zero-spend demo guarantee).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Collapse rapid pushes to the same ref into one active run.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MOCK_LLM: "true"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dev dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Ruff
+        run: ruff check src/ tests/ scripts/
+
+  # ---------------------------------------------------------------------------
+  test:
+    name: Tests (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          # Dev machine parity: the project is developed on Windows.
+          - os: windows-latest
+            python-version: "3.11"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # The BGE-small model (~90 MB) is the slow part of every cold run;
+      # cache it keyed per-OS so only the first run pays the download.
+      - name: Cache HuggingFace models
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/huggingface
+          key: hf-bge-small-en-v1.5-${{ runner.os }}
+          restore-keys: |
+            hf-bge-small-en-v1.5-${{ runner.os }}
+
+      # Install the pinned CPU-only torch FIRST (same pin as the Dockerfile):
+      # pip then sees torch as satisfied and cannot resolve a multi-GB CUDA
+      # build from PyPI on linux runners.
+      - name: Install CPU-only torch
+        run: python -m pip install torch==2.5.1+cpu --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install project + dev dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run full test suite (white-box) with coverage
+        run: >
+          python -m pytest tests/ -v --tb=short
+          --cov=src/proxy --cov-report=term-missing --cov-report=xml
+          --junitxml=pytest-results-${{ runner.os }}-${{ matrix.python-version }}.xml
+
+      - name: Black-box smoke against live uvicorn
+        # Linux legs only: keeps the background-server dance POSIX-simple.
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python -m uvicorn src.proxy.main:app --host 127.0.0.1 --port 8000 > uvicorn.log 2>&1 &
+          SERVER_PID=$!
+          python scripts/smoke_test.py http://127.0.0.1:8000
+          SMOKE_RC=$?
+          kill "$SERVER_PID" 2>/dev/null || true
+          cat uvicorn.log
+          exit $SMOKE_RC
+
+      - name: Upload test reports
+        if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-py311-linux
+          path: |
+            coverage.xml
+            pytest-results-*.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  docker-smoke:
+    name: Docker image smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build image (GitHub Actions layer cache)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: semantic-cache-proxy:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify CPU-only torch inside the image
+        run: |
+          docker run --rm semantic-cache-proxy:ci python -c "import torch; print('torch', torch.__version__); assert not torch.cuda.is_available(), 'CUDA build leaked in'; print('CPU-only confirmed')"
+
+      - name: Start container (mock mode)
+        run: docker run -d --name cache-proxy -p 8000:8000 -e MOCK_LLM=true semantic-cache-proxy:ci
+
+      - name: Black-box smoke against containerized server
+        # Drive the smoke suite from a second container of the SAME image,
+        # so neither job needs host-side Python deps. --network host lets it
+        # reach the mapped port on the runner loopback (Linux runners only,
+        # which this job pins to).
+        run: |
+          docker run --rm --network host \
+            -v "${{ github.workspace }}/scripts:/app/scripts:ro" \
+            semantic-cache-proxy:ci \
+            python /app/scripts/smoke_test.py http://127.0.0.1:8000
+
+      - name: Report image size (ties to README's measured-size claim)
+        run: docker images semantic-cache-proxy:ci
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs cache-proxy
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f cache-proxy
+
+  # ---------------------------------------------------------------------------
+  security-audit:
+    name: Dependency audit (pip-audit, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true  # informational: known-CVE noise must not gate PRs
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install pip-audit
+        run: python -m pip install pip-audit
+
+      - name: Audit runtime dependencies
+        run: pip-audit -r requirements.txt

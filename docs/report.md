@@ -17,7 +17,7 @@ This project implements a **semantic caching proxy** for LLM APIs that reduces c
 - **Phase 3 (Threshold validation):** ✅ Complete — `/eval/threshold-sweep` live in `src/proxy/eval.py`; 31 labeled pairs; curve measured across 7 thresholds; default 0.85 confirmed F1-optimal (see `docs/THRESHOLD_ANALYSIS.md`)
 - **Phase 4 (Invalidation + bypass):** ✅ Complete — TTL expiry tests added
 - **Phase 5 (Metrics + dashboard):** ✅ Complete — single-service dashboard at `/dashboard` (FastAPI + Chart.js, no new deps): metrics cards + charts, cache browser with purge actions, threshold-sweep runner, live request log. Backed by two new endpoints (`GET /cache/entries`, `GET /logs/recent`), app v0.4.0
-- **Phase 6 (Deploy + integrate):** 🔧 Artifacts done & locally verified — `Dockerfile` (CPU torch, baked model, ~2.2 GB) + `.dockerignore` + `render.yaml` + `Procfile`. Docker build/run tested: ~14 s to healthy, MISS→HIT + dashboard OK in-container. Live cloud deploy awaits user account; defaults to `MOCK_LLM=true` for zero-spend demos
+- **Phase 6 (Deploy + integrate):** 🔧 Artifacts done & locally verified — `Dockerfile` (CPU torch pinned `torch==2.5.1+cpu`, baked model, measured **2.11 GB** on 2026-08-23) + `.dockerignore` + `render.yaml` + `Procfile`. Docker build/run tested: ~14 s to healthy, MISS→HIT + dashboard OK in-container. Live cloud deploy awaits user account; defaults to `MOCK_LLM=true` for zero-spend demos
 - **README:** ✅ Populated (problem → architecture → P/R table → quick start → API reference → config → deployment guide)
 
 ---

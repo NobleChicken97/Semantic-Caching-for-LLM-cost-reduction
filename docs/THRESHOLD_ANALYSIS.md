@@ -32,6 +32,17 @@ python scripts/run_sweep.py
 
 ---
 
+## Methodology
+
+Measured on 31 hand-labeled pairs using **direct pairwise cosine similarity** —
+each `prompt_a` is compared only against its labeled `prompt_b`. Production
+lookup instead scans *all* cached entries and takes the global max similarity.
+That can only make effective precision better or equal (more candidates to
+compare against, same threshold floor), so these pairwise numbers are a
+**conservative lower bound**, not a live-traffic measurement.
+
+---
+
 ## Results
 
 | Threshold | Precision | Recall | F1 |

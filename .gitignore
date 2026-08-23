@@ -25,6 +25,8 @@ cache.db
 .pytest_cache/
 htmlcov/
 .coverage
+coverage.xml
+pytest-results-*.xml
 
 # Tools
 .serena/cache/

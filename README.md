@@ -1,5 +1,7 @@
 # Semantic Cache Proxy for LLM APIs
 
+[![CI](https://github.com/NobleChicken97/Semantic-Caching-for-LLM-cost-reduction/actions/workflows/ci.yml/badge.svg)](https://github.com/NobleChicken97/Semantic-Caching-for-LLM-cost-reduction/actions/workflows/ci.yml)
+
 A drop-in caching proxy that sits in front of any OpenAI-compatible LLM API, recognizes when a new prompt means roughly the same thing as one it has already answered, and serves the cached response instead of paying for another generation — with live metrics proving how much it saved.
 
 > **Resume line:** Built a semantic caching proxy for LLM APIs using embedding similarity matching, with a tuned threshold validated against a labeled test set, cutting redundant API spend with live hit-rate and cost-saved tracking.
@@ -54,6 +56,8 @@ Precision/recall across thresholds against a 31-pair labeled dataset (full analy
 
 **Why 0.85:** below it, antonym pairs like *"Translate 'hello' to Spanish"* vs *"Translate 'goodbye' to Spanish"* (similarity 0.864!) become false hits; above it, genuine paraphrases like *"What is 2 + 2?"* ↔ *"Calculate two plus two."* (0.860) stop hitting. 0.85 maximizes F1 = 0.857.
 
+> **Methodology caveat:** these numbers come from direct pairwise comparison of the labeled pairs. Production lookup scans all cached entries and takes the global max similarity — which can only make effective precision better or equal at the same threshold floor. Pairwise F1 is a conservative lower bound, not a live-traffic measurement (full note: [`docs/THRESHOLD_ANALYSIS.md`](docs/THRESHOLD_ANALYSIS.md#methodology)).
+
 ---
 
 ## Tech stack
@@ -66,7 +70,7 @@ Precision/recall across thresholds against a 31-pair labeled dataset (full analy
 | Embeddings | sentence-transformers · `BAAI/bge-small-en-v1.5` (CPU) |
 | Vector math | numpy (dot-product cosine on unit vectors) |
 | Storage | SQLite (WAL mode, foreign keys ON) |
-| Testing | pytest + pytest-asyncio (45 tests) |
+| Testing | pytest + pytest-asyncio (68 tests) |
 
 ---
 
@@ -75,7 +79,7 @@ Precision/recall across thresholds against a 31-pair labeled dataset (full analy
 ```bash
 git clone <this-repo>
 cd <repo>
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 
 # 1. Try it with zero API keys (mock mode):
 set MOCK_LLM=true                     # Windows (export on Linux/macOS)
@@ -149,6 +153,8 @@ curl -X POST http://127.0.0.1:8000/cache/purge -H "Content-Type: application/jso
 
 Purging nulls out `request_log` foreign-key references first, preserving metrics history while deleting entries.
 
+> **Auth:** `/cache/purge`, `/eval/threshold-sweep` and `/dashboard` are admin endpoints — when `ADMIN_TOKEN` is set they require `Authorization: Bearer <ADMIN_TOKEN>` (else `401`); unset (default) they're open, which keeps local mock-mode demos frictionless. See [Configuration](#configuration).
+
 ### `GET /health` · `POST /eval/threshold-sweep`
 
 ```bash
@@ -186,8 +192,15 @@ All settings are environment variables (see [.env.example](.env.example)):
 | `CACHE_DB_PATH` | `cache.db` | SQLite database path |
 | `CACHE_TTL_SECONDS` | `3600` | Cache entry time-to-live |
 | `SIMILARITY_THRESHOLD` | `0.85` | Cosine floor for semantic hits |
+| `ADMIN_TOKEN` | *(empty)* | Bearer token guarding `/cache/purge`, `/eval/threshold-sweep`, `/dashboard`. Empty = unauthenticated (demo mode only) — **set this in any real deployment** |
+| `MAX_SEMANTIC_SCAN_ENTRIES` | `5000` | Warn once per process when the semantic scan exceeds this many entries (see Known limitations) |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8000` | Bind port |
+
+> **Note:** error responses from upstream LLM failures are returned in OpenAI's shape —
+> `{"error": {"message", "type", "code"}}` with the upstream status passed through
+> (`502` for connection failures). Failed calls are logged with outcome `"ERROR"`
+> and zeroed cost/token counts, and never enter the cache.
 
 ---
 
@@ -198,7 +211,7 @@ All settings are environment variables (see [.env.example](.env.example)):
 docker build -t semantic-cache-proxy .
 docker run -p 8000:8000 -e MOCK_LLM=true semantic-cache-proxy   # safe demo mode
 ```
-Image notes: CPU-only PyTorch wheels (`--extra-index-url …/whl/cpu`) keep the image at ~2.2 GB instead of ~4+; the BGE model is **baked into the image** so cold starts don't re-download ~130 MB from the HF Hub (~14 s to healthy).
+Image notes: a **pinned CPU-only PyTorch build** (`torch==2.5.1+cpu`, installed from the PyTorch CPU index *before* `requirements.txt` so pip can't resolve a CUDA build) keeps the image at **2.11 GB measured** (`docker images`, 2026-08-23, python:3.11-slim base) instead of ~4+ GB; in-container check: `torch.cuda.is_available()` is False. The BGE model is **baked into the image** so cold starts don't re-download ~130 MB from the HF Hub (~14 s to healthy).
 
 **Render (blueprint included):**
 1. Push this repo to GitHub
@@ -214,6 +227,21 @@ Caveats worth knowing:
 
 ---
 
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs four jobs on every push/PR:
+
+| Job | What it proves |
+|-----|----------------|
+| **Lint** | `ruff` clean across `src/`, `tests/`, `scripts/` |
+| **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 68-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
+| **Docker smoke** | Builds the production image with GHA layer caching, asserts `torch.cuda.is_available()` is False inside it, then runs the same black-box smoke suite against the containerized server |
+| **Security audit** (non-blocking) | `pip-audit` over `requirements.txt`; surfaced as informational because transitive CVEs in the torch/fastapi ecosystem shouldn't gate routine PRs |
+
+Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the BGE-small model (~90 MB) is cached per-OS between runs; CPU-only torch is installed *before* project deps so Linux runners never pull multi-GB CUDA wheels (same pin as the Dockerfile). Dependabot keeps actions and pip deps fresh weekly.
+
+---
+
 ## Project layout
 
 ```
@@ -223,8 +251,9 @@ Caveats worth knowing:
 │   ├── eval.py          Threshold sweep: batch embed → classify → P/R/F1
 │   ├── database.py      SQLite schema + 31 labeled test pairs
 │   └── ...
-├── tests/               51 tests (unit + integration)
-├── scripts/             Sweep runner, pair checker, JSON exporter
+├── tests/               68 tests (unit + integration)
+├── scripts/             Sweep runner, pair checker, JSON exporter, CI smoke suite
+│   ├── .github/         CI workflow (lint / test matrix / docker smoke / audit) + Dependabot
 ├── data/labeled_test_pairs.json   Reproducible validation dataset
 ├── Dockerfile · .dockerignore · render.yaml · Procfile   Deployment artifacts
 └── docs/                PRD, technical detail, master guide, threshold analysis, progress

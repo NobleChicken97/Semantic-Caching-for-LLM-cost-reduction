@@ -7,14 +7,12 @@ classify at each requested threshold and report precision/recall/F1.
 
 from __future__ import annotations
 
-from typing import Dict, List
-
 from .database import get_connection
 from .embedding import cosine_similarity, embed_texts
 from .models import ThresholdResult
 
 
-def load_labeled_pairs() -> List[Dict]:
+def load_labeled_pairs() -> list[dict]:
     """Load all labeled test pairs from the database."""
     conn = get_connection()
     try:
@@ -45,32 +43,32 @@ def _precision_recall_f1(tp: int, fp: int, fn: int) -> tuple:
     return precision, recall, f1
 
 
-def pair_similarities() -> List[tuple]:
+def pair_similarities() -> list[tuple]:
     """Embed each pair once and return [(similarity, should_match), ...]."""
     pairs = load_labeled_pairs()
     if not pairs:
         return []
 
     # Batch-embed all prompts in one pass (2 texts per pair)
-    texts: List[str] = []
+    texts: list[str] = []
     for p in pairs:
         texts.extend([p["prompt_a"], p["prompt_b"]])
     vectors = embed_texts(texts)
 
-    out: List[tuple] = []
+    out: list[tuple] = []
     for i, p in enumerate(pairs):
         sim = float(cosine_similarity(vectors[2 * i], vectors[2 * i + 1]))
         out.append((sim, p["should_match"]))
     return out
 
 
-def run_threshold_sweep(thresholds: List[float]) -> List[ThresholdResult]:
+def run_threshold_sweep(thresholds: list[float]) -> list[ThresholdResult]:
     """Evaluate precision/recall/F1 at every threshold against the pairs."""
     scored = pair_similarities()
     if not scored:
         return []
 
-    results: List[ThresholdResult] = []
+    results: list[ThresholdResult] = []
     for t in thresholds:
         tp = fp = fn = tn = 0
         for sim, label in scored:

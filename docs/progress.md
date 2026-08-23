@@ -162,12 +162,57 @@
 
 | Test File | # Tests | What's Covered |
 |-----------|---------|---------------|
-| [`test_api.py`](file:///c:/Users/arpan.ARPAN/OneDrive/Desktop/projects/Semantic%20caching%20layer%20for%20LLM%20cost%20reduction/tests/test_api.py) | 13 | Health, first-request miss, identical-hit, paraphrase-hit, unrelated-miss, bypass header, cache_metadata presence + purge-all integration + threshold-sweep endpoint (structure, recall floor, empty body, 422) |
-| [`test_cache.py`](file:///c:/Users/arpan.ARPAN/OneDrive/Desktop/projects/Semantic%20caching%20layer%20for%20LLM%20cost%20reduction/tests/test_cache.py) | 16 | Hash consistency, exact match store/retrieve, two-tier lookup (exact, semantic, miss), purge single/all/with-log-references (incl. FK regression), TTL expiry ×2, metrics empty + after writes |
+| [`test_api.py`](file:///c:/Users/arpan.ARPAN/OneDrive/Desktop/projects/Semantic%20caching%20layer%20for%20LLM%20cost%20reduction/tests/test_api.py) | 30 | All Phase 1–5 endpoint tests, plus review-round additions: cross-model MISS, measured HIT latency, request coalescing (5 concurrent → 1 upstream call), upstream 429/502 OpenAI-shaped errors, no-cache-write-on-failure + ERROR log row, shared httpx client reuse, ADMIN_TOKEN auth matrix |
+| [`test_cache.py`](file:///c:/Users/arpan.ARPAN/OneDrive/Desktop/projects/Semantic%20caching%20layer%20for%20LLM%20cost%20reduction/tests/test_cache.py) | 22 | Hash consistency, exact match store/retrieve, model-isolated lookups (exact + semantic tiers), two-tier lookup, purge ×4 (incl. FK regression), TTL expiry ×2, settings factory freshness + frozenness, scan-limit guardrail warning, metrics empty + after writes |
 | [`test_embedding.py`](file:///c:/Users/arpan.ARPAN/OneDrive/Desktop/projects/Semantic%20caching%20layer%20for%20LLM%20cost%20reduction/tests/test_embedding.py) | 8 | Embedding dim, single/batch/empty, normalization, cosine similarity (identical, different, semantically close) |
 | [`test_eval.py`](file:///c:/Users/arpan.ARPAN/OneDrive/Desktop/projects/Semantic%20caching%20layer%20for%20LLM%20cost%20reduction/tests/test_eval.py) | 8 | Sweep structure, identical-pair P/R/F1=1.0 @ t=0.999, mixed-dataset known outcomes, zero-division safety, recall monotonicity, empty inputs, dataset ≥30 pairs |
-| **Total** | **45** | |
+| **Total** | **68** | |
 
 ### Test Gaps
-- No tests for concurrent requests / race conditions
-- No error-handling test for upstream LLM API failure
+*(both gaps below were closed in the 2026-08-23 code-review fix round — see the tables at the bottom of this file)*
+- ~~No tests for concurrent requests / race conditions~~ → `test_concurrent_identical_prompts_forward_once`
+- ~~No error-handling test for upstream LLM API failure~~ → `TestUpstreamErrors` (3 tests)
+---
+
+## 2026-08-23 - Code-review fix round (11 issues, all resolved)
+
+Source: deep code review of main (P0 correctness / P1 architecture / P2 reproducibility).
+Every fix shipped with its proving test; full suite green after each item.
+
+| # | Sev | Fix | Status |
+|---|-----|-----|--------|
+| 1 | P0 | Model name folded into cache identity: canonical_prompt() prefixes [model]; lookup()/_exact_lookup()/_semantic_lookup() accept model filter | Done + tests |
+| 2 | P0 | HIT latency measured with perf_counter (was hardcoded 0.0) | Done + test |
+| 3 | P0 | Single-process request coalescing per prompt hash (asyncio.Lock registry, bounded); documented multi-worker limitation | Done + concurrency test |
+| 4 | P0 | Upstream httpx errors -> OpenAI-shaped JSON error (status passthrough / 502), outcome=ERROR logged, CHECK constraint widened; no fabricated cost/tokens | Done + tests |
+| 5 | P1 | Optional ADMIN_TOKEN bearer auth on purge/sweep/dashboard; startup warning when unset | Done + tests |
+| 6 | P1 | MAX_SEMANTIC_SCAN_ENTRIES guardrail warns once; O(n) scan documented as accepted limitation | Done + caplog test |
+| 7 | P1 | Shared lifespan-managed httpx.AsyncClient on app.state; forward_to_llm(client=...) reuse with one-off fallback; SQLite pooling deliberately skipped | Done + reuse test |
+| 8 | P1 | get_settings() lru_cache factory (frozen Settings); point-of-use reads; fixtures simplified via cache_clear(); import-time freeze bug gone | Done + freshness test |
+| 9 | P2 | requirements-dev.txt (pytest/pytest-asyncio/ruff), Makefile + README install updated; ruff lint clean across src/tests/scripts | Done, verified locally |
+| 10 | P2 | Dockerfile pins torch==2.5.1+cpu BEFORE requirements (pip can't resolve CUDA); image measured 2.11 GB (docker images, 2026-08-23); torch.cuda.is_available()==False verified in-container | Done, measured |
+| 11 | P2 | Methodology caveat (pairwise vs scan-max F1 lower bound) in THRESHOLD_ANALYSIS.md + README | Docs-only |
+
+Post-round state: 68 tests passing (was 51), ruff clean, README/.env.example/TECHNICAL_DETAIL.md updated.
+Note for next reader: init_db is CREATE-IF-NOT-EXISTS, so databases created before the
+outcome='ERROR' constraint change keep the old 3-outcome CHECK until recreated (fresh deploys unaffected).
+---
+
+## 2026-08-23 - CI pipeline round (GitHub Actions)
+
+New: .github/workflows/ci.yml (4 jobs), .github/dependabot.yml, scripts/smoke_test.py (22-check black-box HTTP suite, verified 22/22 against a live local uvicorn server before committing to CI), pytest-cov added to dev deps.
+
+| Job | Covers |
+|-----|--------|
+| lint | ruff across src/tests/scripts |
+| test | pytest matrix: py3.10/3.11/3.12 ubuntu + py3.11 windows (dev parity); CPU-only torch pre-install (Dockerfile-matched pin, avoids multi-GB CUDA wheels); HF model cache keyed per-OS; coverage.xml + junit artifacts (py311-linux leg); black-box smoke vs live uvicorn on ubuntu legs |
+| docker-smoke | buildx build with type=gha mode=max layer cache; in-container torch CPU-only assertion; same smoke suite driven from a second container of the same image (--network host + ro-mounted scripts/); image-size report; logs-on-failure + always-cleanup |
+| security-audit | pip-audit -r requirements.txt, job-level continue-on-error (informational) |
+
+Design decisions:
+- Action versions from 2026-current docs/examples: checkout@v7, setup-python@v6, cache@v5, setup-buildx-action@v4, build-push-action@v7, upload-artifact@v4. Dependabot keeps them fresh; SHA-pinning is the documented next hardening step once SHAs can be captured.
+- MOCK_LLM=true at workflow env level = CI can never spend money (mirrors README guarantee).
+- Smoke suite asserts exact metrics accounting (+5 requests), OpenAI response contract keys, similarity floors kept loose (0.80) so upstream BGE weight updates don't flake CI (unit suite gates 0.85).
+- ruff format --check deliberately NOT gated: 16 files would need reformatting (tracked as follow-up).
+
+Docs consistency pass (same day): README API reference now documents ADMIN_TOKEN gating on purge/sweep/dashboard; stale "~2.2 GB" / "45 tests" / "51 tests" claims corrected across report.md, todos.md and guide.md.

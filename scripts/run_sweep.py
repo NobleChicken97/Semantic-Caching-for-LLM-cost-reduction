@@ -9,12 +9,9 @@ fd, tmp_db = tempfile.mkstemp(suffix=".db", prefix="sweep_")
 os.close(fd)
 os.environ["CACHE_DB_PATH"] = tmp_db
 
-from proxy.config import settings  # noqa: E402
 
-settings.cache_db_path = tmp_db
-
-from proxy.database import get_connection, init_db, seed_test_pairs  # noqa: E402
-from proxy.eval import pair_similarities, run_threshold_sweep  # noqa: E402
+from proxy.database import get_connection, init_db, seed_test_pairs
+from proxy.eval import pair_similarities, run_threshold_sweep
 
 init_db()
 seed_test_pairs()

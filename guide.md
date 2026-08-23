@@ -82,7 +82,7 @@ src/proxy/
 ├── eval.py          Threshold sweep: embed once → classify at N thresholds → P/R/F1
 ├── routes/chat.py   POST /v1/chat/completions handler (the core flow)
 └── static/index.html Single-page dashboard (vanilla JS + Chart.js from CDN)
-tests/               51 tests (verified passing: pytest run, 56.8s)
+tests/               68 tests (verified passing; was 51 when this guide was written)
 scripts/             Sweep runner, pair checker, dataset exporter
 data/                labeled_test_pairs.json (reproducible eval dataset)
 Dockerfile · render.yaml · Procfile · Makefile · pyproject.toml
@@ -506,7 +506,7 @@ Lead with numbers, frame as infrastructure, volunteer the limitations before the
 > holds 93.75% up to it and falls off a cliff after. Storage is SQLite in WAL mode with FK enforcement;
 > purges detach log references rather than cascade so metrics history survives. Everything is logged —
 > HIT/MISS/BYPASS with latency, tokens, estimated cost — and aggregated into hit-rate and cost-saved
-> metrics with a Chart.js dashboard. 51 tests, Docker image with CPU-only torch wheels and the model
+> metrics with a Chart.js dashboard. 68 tests, Docker image with CPU-only torch wheels and the model
 > baked in for ~14 s cold starts, Render blueprint included."
 
 Then go deep on whatever they probe:
@@ -575,7 +575,7 @@ Total: roughly 35–50 focused hours to genuine ownership.
 | M8 | numpy essentials: arrays, float32, `dot`, `frombuffer/tobytes` | Vector math + BLOB storage | `cache.py` serialize helpers | Round-trip a vector through bytes | 1–2 h |
 | M9 | SQLite: tables, indexes, foreign keys, PRAGMAs, parameterized queries | Persistence layer | `database.py` | Create the 3-table schema yourself; break an FK on purpose | 2–3 h |
 | M10 | Evaluation math: confusion matrix, precision, recall, F1, hard negatives | The threshold argument | `eval.py`, Part 8 above | Hand-compute P/R/F1 for a tiny labeled set | 2–3 h |
-| M11 | pytest: fixtures, monkeypatch, tmp_path, async tests, ASGITransport | All 51 tests | `tests/conftest.py`, `test_api.py` fixture | Write one test for `/health` with a temp DB | 3–4 h |
+| M11 | pytest: fixtures, monkeypatch, tmp_path, async tests, ASGITransport | All 68 tests | `tests/conftest.py`, `test_api.py` fixture | Write one test for `/health` with a temp DB | 3–4 h |
 | M12 | Config & secrets via env vars | 12-factor configuration | `.env.example`, `config.py` | Add a fake `MAX_ENTRIES` setting end-to-end | 30 min |
 | M13 | Deployment: Docker layers, CPU-vs-CUDA wheels, health checks, Render/Railway | Phase 6 artifacts | `Dockerfile`, `render.yaml`, `Procfile` | Build the image; run it; hit `/health` | 3–4 h |
 | M14 | Git hygiene: working tree vs index vs commits, .gitignore | This repo's changes are staged-but-uncommitted (see Part 11!) | `git status` | Stage and commit the current work safely | 1 h |
@@ -589,7 +589,7 @@ purge detaches FKs (D12), and why 0.85 beats both 0.80 and 0.93 (Part 8) — you
 
 **Overall: ~85% of v1 scope is complete and verified.** All six build phases are code-complete;
 what remains is mostly *your* actions (git commits, cloud deploy) plus stretch goals.
-Verified state as of writing: **51/51 tests pass** (`pytest`, 56.8 s run).
+Verified state as of writing: **68/68 tests pass** (`pytest`, 56.8 s run).
 
 ### Phase status
 
@@ -617,7 +617,7 @@ index awaiting your review and commit. Until committed, it's one careless `check
 3. **Deploy live**: push to GitHub → Render "New + → Blueprint" (or Railway via Procfile). Defaults to `MOCK_LLM=true`.
 4. **Before enabling real LLM mode**: set a spend cap on the API key, *then* set `MOCK_LLM=false` + `LLM_API_KEY` as a secret.
 5. **Dashboard screenshot / demo video** for the README.
-6. Small fixes worth doing while you're in there: README tech-stack table says "45 tests" (actual: 51); optionally measure HIT latency properly (Quirk #1 below).
+6. Small fixes worth doing while you're in there: RESOLVED 2026-08-23: test counts are current in README (68), and HIT latency is now measured via perf_counter.
 
 ### Known quirks & technical debt (know these cold)
 

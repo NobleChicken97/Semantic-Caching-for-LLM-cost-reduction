@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -21,7 +20,7 @@ from proxy.cache import (
     purge,
     store,
 )
-from proxy.config import settings
+from proxy.config import get_settings
 
 # Always use mock mode
 os.environ["MOCK_LLM"] = "true"
@@ -41,12 +40,17 @@ SAMPLE_RESPONSE = {
 
 @pytest.fixture(autouse=True)
 def isolated_db(monkeypatch):
-    """Every test gets a temporary database path."""
+    """Every test gets a temporary database path.
+
+    Settings are re-read from the environment via ``cache_clear`` — no more
+    patching attributes on the cached singleton (that workaround existed only
+    because settings used to be frozen at import time).
+    """
     fd, path = tempfile.mkstemp(suffix=".db", prefix="test_cache_")
     os.close(fd)
 
     monkeypatch.setenv("CACHE_DB_PATH", path)
-    monkeypatch.setattr(settings, "cache_db_path", path)
+    get_settings.cache_clear()
 
     from proxy.database import init_db, seed_test_pairs
 
@@ -55,10 +59,32 @@ def isolated_db(monkeypatch):
 
     yield
 
+    # Don't leak this test's tmp path into the cached settings of other tests.
+    get_settings.cache_clear()
+
     try:
         os.unlink(path)
     except OSError:
         pass
+
+
+class TestSettingsFactory:
+    """Review fix #8 — settings are read per-call, not frozen at import."""
+
+    def test_env_changes_picked_up_after_cache_clear(self, monkeypatch):
+        monkeypatch.setenv("SIMILARITY_THRESHOLD", "0.5")
+        get_settings.cache_clear()
+        try:
+            assert get_settings().similarity_threshold == 0.5
+        finally:
+            # Restore for any subsequent lookups in this session.
+            get_settings.cache_clear()
+
+    def test_settings_are_frozen(self):
+        from dataclasses import FrozenInstanceError
+
+        with pytest.raises(FrozenInstanceError):
+            get_settings().similarity_threshold = 0.1
 
 
 class TestHash:
@@ -99,11 +125,40 @@ class TestTwoTierLookup:
         store("What is the capital of France?", SAMPLE_RESPONSE, "gpt-3.5-turbo")
         result = lookup("Tell me the capital of France.")
         assert result is not None
-        assert result["similarity_score"] >= settings.similarity_threshold
+        assert result["similarity_score"] >= get_settings().similarity_threshold
 
     def test_unrelated_miss(self):
         store("What is the capital of France?", SAMPLE_RESPONSE, "gpt-3.5-turbo")
         result = lookup("How do I bake a chocolate cake?")
+        assert result is None
+
+
+class TestModelIsolation:
+    """The model name is part of the cache identity (review fix #1)."""
+
+    def test_same_prompt_different_model_is_exact_miss(self):
+        """Identical prompt text under a different model must MISS even though
+        the SHA-256 of the text matches — the exact tier filters by model_used."""
+        store("What is the capital of France?", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+
+        result = lookup("What is the capital of France?", model="gpt-4")
+        assert result is None
+
+    def test_same_prompt_same_model_still_hits(self):
+        store("What is the capital of France?", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+
+        result = lookup("What is the capital of France?", model="gpt-3.5-turbo")
+        assert result is not None
+        assert result["similarity_score"] == 1.0
+
+    def test_semantic_tier_never_crosses_models(self):
+        """A paraphrase stored for gpt-3.5-turbo must not semantically hit
+        when queried for gpt-4 — the semantic tier filters by model too."""
+        store("What is the capital of France?", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+
+        # Exact tier misses (different text); only the semantic tier could
+        # serve this, and it must refuse because the model differs.
+        result = lookup("Tell me the capital of France.", model="gpt-4")
         assert result is None
 
 
@@ -203,6 +258,37 @@ class TestTtlExpiry:
 
         result = lookup("Tell me the boiling point of water.")
         assert result is None
+
+
+class TestSemanticScanGuardrail:
+    """Review fix #6 — warn once when the O(n) semantic scan gets large."""
+
+    def test_warns_when_scan_exceeds_configured_limit(self, monkeypatch, caplog):
+        import logging
+
+        from proxy import cache as cache_module
+
+        monkeypatch.setenv("MAX_SEMANTIC_SCAN_ENTRIES", "2")
+        get_settings.cache_clear()
+
+        original = cache_module._scan_limit_warned
+        cache_module._scan_limit_warned = False  # reset once-per-process flag
+        try:
+            store("alpha prompt one", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+            store("beta prompt two", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+            store("gamma prompt three", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+
+            with caplog.at_level(logging.WARNING, logger="proxy"):
+                lookup("please tell me about alpha prompt one")  # forces semantic tier
+
+            assert any(
+                "MAX_SEMANTIC_SCAN_ENTRIES" in rec.getMessage()
+                for rec in caplog.records
+            )
+            assert cache_module._scan_limit_warned is True
+        finally:
+            cache_module._scan_limit_warned = original
+            get_settings.cache_clear()
 
 
 class TestRequestLogAndMetrics:

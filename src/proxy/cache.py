@@ -9,13 +9,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
-from .config import settings
+from .config import get_settings
 from .database import get_connection
+
+logger = logging.getLogger("proxy")
+
+# Warn only once per process when the semantic scan exceeds the configured
+# entry cap — a slow-degradation tripwire, not a hard failure.
+_scan_limit_warned = False
 
 
 def _hash_prompt(prompt: str) -> str:
@@ -41,40 +48,53 @@ def _deserialize_embedding(blob: bytes) -> np.ndarray:
 def lookup(
     prompt_text: str,
     *,
-    threshold: Optional[float] = None,
-) -> Optional[Dict[str, Any]]:
+    threshold: float | None = None,
+    model: str | None = None,
+) -> dict[str, Any] | None:
     """Two-tier lookup: exact hash FIRST, then semantic nearest-neighbor.
+
+    ``model`` scopes the search to entries stored for that same model —
+    identical prompts served by different models are distinct cache keys.
+    When ``model`` is None the lookup matches any stored model (used by
+    direct callers/tests; the HTTP route always passes a model).
 
     Returns ``{"entry_id", "response", "similarity_score"}`` on a hit,
     or ``None`` on a miss.
     """
-    threshold = threshold if threshold is not None else settings.similarity_threshold
+    threshold = (
+        threshold if threshold is not None else get_settings().similarity_threshold
+    )
 
     # --- Tier 1: exact string match ---
-    exact = _exact_lookup(prompt_text)
+    exact = _exact_lookup(prompt_text, model=model)
     if exact is not None:
         exact["similarity_score"] = 1.0
         return exact
 
     # --- Tier 2: semantic search ---
-    return _semantic_lookup(prompt_text, threshold)
+    return _semantic_lookup(prompt_text, threshold, model=model)
 
 
-def _exact_lookup(prompt_text: str) -> Optional[Dict[str, Any]]:
-    """Return the cached response for an exact hash match, or None."""
+def _exact_lookup(
+    prompt_text: str,
+    model: str | None = None,
+) -> dict[str, Any] | None:
+    """Return the cached response for an exact hash + same-model match, or None."""
     prompt_hash = _hash_prompt(prompt_text)
     conn = get_connection()
     try:
-        row = conn.execute(
-            """
+        sql = """
             SELECT entry_id, response_json, expires_at
               FROM cache_entries
              WHERE prompt_hash = ?
-          ORDER BY created_at DESC
-             LIMIT 1
-            """,
-            (prompt_hash,),
-        ).fetchone()
+        """
+        params: list[Any] = [prompt_hash]
+        if model is not None:
+            sql += "           AND model_used = ?"
+            params.append(model)
+        sql += "         ORDER BY created_at DESC\n             LIMIT 1"
+
+        row = conn.execute(sql, tuple(params)).fetchone()
 
         if row is None:
             return None
@@ -101,11 +121,20 @@ def _exact_lookup(prompt_text: str) -> Optional[Dict[str, Any]]:
 def _semantic_lookup(
     prompt_text: str,
     threshold: float,
-) -> Optional[Dict[str, Any]]:
+    model: str | None = None,
+) -> dict[str, Any] | None:
     """Embed the prompt and find the nearest cached entry by cosine similarity.
 
-    Returns the cached response only if similarity >= threshold.
+    SCALING NOTE (review fix #6): this is an O(n) full scan over stored
+    embeddings — fine up to a few thousand entries, but swap in a real ANN
+    index (FAISS / sqlite-vec / pgvector) beyond that.
+
+    Returns the cached response only if similarity >= threshold, restricted
+    to entries stored for ``model`` when a model is given (a gpt-4 request
+    must never semantically hit an answer generated for gpt-3.5-turbo).
     """
+    global _scan_limit_warned
+
     from .embedding import cosine_similarity, embed_texts
 
     query_vec = embed_texts([prompt_text])[0]
@@ -114,15 +143,28 @@ def _semantic_lookup(
     try:
         # Fetch all non-expired entries that HAVE an embedding
         now = time.time()
-        rows = conn.execute(
-            """
+        sql = """
             SELECT entry_id, prompt_embedding, response_json, expires_at
               FROM cache_entries
              WHERE prompt_embedding IS NOT NULL
                AND expires_at > ?
-            """,
-            (now,),
-        ).fetchall()
+        """
+        params: list[Any] = [now]
+        if model is not None:
+            sql += "           AND model_used = ?"
+            params.append(model)
+        rows = conn.execute(sql, tuple(params)).fetchall()
+
+        limit = get_settings().max_semantic_scan_entries
+        if len(rows) > limit and not _scan_limit_warned:
+            logger.warning(
+                "Semantic scan is comparing against %d entries "
+                "(MAX_SEMANTIC_SCAN_ENTRIES=%d) — O(n) scan latency will grow "
+                "linearly; consider an ANN index (FAISS/sqlite-vec/pgvector).",
+                len(rows),
+                limit,
+            )
+            _scan_limit_warned = True
 
         best_score = -1.0
         best_entry = None
@@ -165,7 +207,7 @@ def _semantic_lookup(
 
 def store(
     prompt_text: str,
-    response_dict: Dict[str, Any],
+    response_dict: dict[str, Any],
     model_used: str,
 ) -> int:
     """Store a new cache entry with its embedding. Returns the new entry_id."""
@@ -174,7 +216,7 @@ def store(
     prompt_hash = _hash_prompt(prompt_text)
     embedding = embed_texts([prompt_text])[0]
     now = time.time()
-    expires_at = now + settings.cache_default_ttl_seconds
+    expires_at = now + get_settings().cache_default_ttl_seconds
 
     conn = get_connection()
     try:
@@ -230,7 +272,7 @@ def _delete_entry(conn, entry_id: int) -> None:
     conn.execute("DELETE FROM cache_entries WHERE entry_id = ?", (entry_id,))
     conn.commit()
 
-def purge(entry_id: Optional[int] = None) -> int:
+def purge(entry_id: int | None = None) -> int:
     """Purge a single entry or the entire cache. Returns count deleted."""
     conn = get_connection()
     try:
@@ -251,8 +293,8 @@ def log_request(
     prompt_text: str,
     outcome: str,
     latency_ms: float,
-    matched_entry_id: Optional[int] = None,
-    similarity_score: Optional[float] = None,
+    matched_entry_id: int | None = None,
+    similarity_score: float | None = None,
     estimated_cost_usd: float = 0.0,
     tokens_in: int = 0,
     tokens_out: int = 0,
@@ -287,7 +329,7 @@ def log_request(
         conn.close()
 
 
-def get_metrics() -> Dict[str, Any]:
+def get_metrics() -> dict[str, Any]:
     """Aggregate metrics from the request_log."""
     conn = get_connection()
     try:
@@ -333,7 +375,7 @@ def get_metrics() -> Dict[str, Any]:
         conn.close()
 
 
-def list_cache_entries(search: Optional[str] = None) -> List[Dict[str, Any]]:
+def list_cache_entries(search: str | None = None) -> list[dict[str, Any]]:
     """List cache entries newest-first for the dashboard cache browser.
 
     ``search`` does a substring match on prompt_text when provided.
@@ -357,7 +399,7 @@ def list_cache_entries(search: Optional[str] = None) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def recent_logs(limit: int = 50) -> List[Dict[str, Any]]:
+def recent_logs(limit: int = 50) -> list[dict[str, Any]]:
     """Return the most recent request_log rows, newest first."""
     limit = max(1, min(limit, 500))
     conn = get_connection()

@@ -4,16 +4,14 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Optional
-
-from fastapi import FastAPI
-
 from pathlib import Path
 
+import httpx
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 
 from .cache import get_metrics, list_cache_entries, purge, recent_logs
-from .config import settings
+from .config import get_settings
 from .database import init_db, seed_test_pairs
 from .eval import run_threshold_sweep
 from .models import (
@@ -32,25 +30,56 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 logger = logging.getLogger("proxy")
 
 
+async def require_admin_token(
+    authorization: str | None = Header(default=None),
+) -> None:
+    """Bearer-token gate for admin endpoints (review fix #5).
+
+    No-op while ``ADMIN_TOKEN`` is unset so the mock-mode demo stays
+    frictionless; set ADMIN_TOKEN in any real deployment to lock down
+    /cache/purge, /eval/threshold-sweep and /dashboard.
+    """
+    expected = get_settings().admin_token
+    if not expected:
+        return
+    if authorization != f"Bearer {expected}":
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing admin bearer token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: init DB, seed test data, warm the embedding model."""
-    init_db()
-    seed_test_pairs()
-    logger.info("Database initialized.")
+    """Startup: shared HTTP client, init DB, seed data, warm embeddings."""
+    if not get_settings().admin_token:
+        logger.warning("ADMIN_TOKEN not set — admin endpoints are unauthenticated.")
 
-    # Preload the embedding model so the first request isn't slow
-    from .embedding import embed_texts
+    # One shared httpx client (connection pool) reused by every upstream
+    # call instead of a new client per request (review fix #7).
+    app.state.http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
 
     try:
-        _ = embed_texts(["warmup hello world"])
-        logger.info("Embedding model loaded (BAAI/bge-small-en-v1.5).")
-    except Exception:
-        logger.exception("Failed to warm embedding model — will retry on first request.")
+        init_db()
+        seed_test_pairs()
+        logger.info("Database initialized.")
 
-    yield  # app runs here
+        # Preload the embedding model so the first request isn't slow
+        from .embedding import embed_texts
 
-    logger.info("Shutting down.")
+        try:
+            _ = embed_texts(["warmup hello world"])
+            logger.info("Embedding model loaded (BAAI/bge-small-en-v1.5).")
+        except Exception:
+            logger.exception(
+                "Failed to warm embedding model — will retry on first request."
+            )
+
+        yield  # app runs here
+    finally:
+        await app.state.http_client.aclose()
+        logger.info("Shutting down.")
 
 
 app = FastAPI(
@@ -82,20 +111,28 @@ async def metrics():
     return get_metrics()
 
 
-@app.post("/cache/purge", response_model=PurgeResponse)
+@app.post(
+    "/cache/purge",
+    response_model=PurgeResponse,
+    dependencies=[Depends(require_admin_token)],
+)
 async def cache_purge(body: PurgeRequest):
     count = purge(entry_id=body.entry_id)
     return PurgeResponse(purged_count=count)
 
 
-@app.post("/eval/threshold-sweep", response_model=ThresholdSweepResponse)
+@app.post(
+    "/eval/threshold-sweep",
+    response_model=ThresholdSweepResponse,
+    dependencies=[Depends(require_admin_token)],
+)
 async def threshold_sweep(body: ThresholdSweepRequest):
     """Precision/recall/F1 at each requested threshold against the labeled pairs."""
     return ThresholdSweepResponse(results=run_threshold_sweep(body.thresholds))
 
 
 @app.get("/cache/entries", response_model=CacheEntriesResponse)
-async def cache_entries(q: Optional[str] = None):
+async def cache_entries(q: str | None = None):
     """List cache entries newest-first (optional substring filter on prompt)."""
     return CacheEntriesResponse(entries=list_cache_entries(q))
 
@@ -106,7 +143,11 @@ async def logs_recent(limit: int = 50):
     return LogsResponse(logs=recent_logs(limit))
 
 
-@app.get("/dashboard", include_in_schema=False)
+@app.get(
+    "/dashboard",
+    include_in_schema=False,
+    dependencies=[Depends(require_admin_token)],
+)
 async def dashboard():
     """Serve the Phase 5 metrics dashboard (single-page, Chart.js via CDN)."""
     return FileResponse(STATIC_DIR / "index.html", media_type="text/html")
@@ -118,9 +159,10 @@ async def dashboard():
 if __name__ == "__main__":
     import uvicorn
 
+    _cfg = get_settings()
     uvicorn.run(
         "src.proxy.main:app",
-        host=settings.host,
-        port=settings.port,
+        host=_cfg.host,
+        port=_cfg.port,
         reload=True,
     )

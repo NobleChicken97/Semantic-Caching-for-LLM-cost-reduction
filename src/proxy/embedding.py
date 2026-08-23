@@ -5,8 +5,6 @@ Lazily loads the model on first use to avoid blocking app startup.
 
 from __future__ import annotations
 
-from typing import List
-
 import numpy as np
 
 _model = None
@@ -25,7 +23,7 @@ def _get_model():
     return _model
 
 
-def embed_texts(texts: List[str], normalize: bool = True) -> np.ndarray:
+def embed_texts(texts: list[str], normalize: bool = True) -> np.ndarray:
     """Embed a batch of prompt strings.
 
     Returns a 2-D numpy array of shape (len(texts), 384).

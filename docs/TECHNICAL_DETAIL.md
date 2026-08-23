@@ -123,3 +123,30 @@ body: { thresholds: [0.80, 0.85, 0.90, 0.95] }
 - Single FastAPI service, deployable to Render/Railway free tier.
 - SQLite is sufficient for the cache backend at demo scale; note in the README that Redis/Postgres would be the production swap for higher concurrency.
 - Keep a small, clearly-labeled demo LLM API key with a spend cap if the proxy is publicly reachable.
+- Docker image: pinned `torch==2.5.1+cpu` installed from the PyTorch CPU index *before* `requirements.txt` (so pip cannot resolve a CUDA build from PyPI). Measured size: **2.11 GB** (`docker images`, 2026-08-23); `torch.cuda.is_available()` verified False in-container.
+
+---
+
+## 8. Known limitations (documented, accepted)
+
+Each item below is a deliberate scope decision, not an oversight:
+
+- **Semantic search is O(n) per lookup.** `_semantic_lookup` full-scans stored
+  embeddings with a cosine compare per row — fine to a few thousand entries.
+  Guardrail: warns once per process when the scan exceeds
+  `MAX_SEMANTIC_SCAN_ENTRIES` (default 5000). Beyond that, swap in an ANN index
+  (FAISS / sqlite-vec / pgvector).
+- **Request coalescing is single-process.** The per-prompt-hash `asyncio.Lock`
+  protects against cache stampedes within one uvicorn process only;
+  multi-worker / multi-instance deployments need a distributed lock
+  (e.g. Redis SETNX). Commented at the lock site in `routes/chat.py`.
+- **One SQLite connection per operation, no pool.** Connections are cheap to
+  open locally and WAL mode already gives concurrent readers; pooling is added
+  complexity with no measured payoff yet.
+- **Threshold F1 = 0.857 is pairwise-measured**, not a live-traffic number —
+  see the Methodology note in `docs/THRESHOLD_ANALYSIS.md`. Production lookup
+  scans all cached entries and takes the global max, which can only make
+  effective precision better-or-equal at the same threshold floor.
+- **The shared httpx client requires a running lifespan.** Direct calls to
+  `forward_to_llm` without a lifespan (scripts/tests) fall back to a one-off
+  client per call by design.
