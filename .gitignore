@@ -27,6 +27,8 @@ htmlcov/
 .coverage
 coverage.xml
 pytest-results-*.xml
+pip-audit.json
+pip-audit.sarif
 
 # Tools
 .serena/cache/
