@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Semantic Cache Proxy — Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a;
+    --text: #e6e9ef; --muted: #8b93a3; --accent: #4f8cff; --green: #34c98a;
+    --red: #ff6b6b; --amber: #ffb454;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 22px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  nav { display: flex; gap: 4px; margin-left: auto; }
+  nav button {
+    background: transparent; color: var(--muted); border: 1px solid transparent;
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  nav button.active { background: var(--panel2); color: var(--text); border-color: var(--border); }
+  main { padding: 20px 22px; max-width: 1200px; margin: 0 auto; }
+  .tab { display: none; } .tab.active { display: block; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+  .card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .card .value { font-size: 28px; font-weight: 700; margin-top: 6px; }
+  .card .value small { font-size: 13px; color: var(--muted); font-weight: 400; }
+  .grid2 { display: grid; grid-template-columns: 280px 1fr; gap: 14px; margin-top: 14px; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+  canvas { max-height: 260px; }
+
+  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  input[type=text], input[type=number] {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none; min-width: 220px;
+  }
+  input:focus { border-color: var(--accent); }
+  button.primary {
+    background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+    padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 600;
+  }
+  button.danger { background: transparent; color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
+  button.small { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
+  label.toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; }
+
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+  th { background: var(--panel2); color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .prompt-cell { max-width: 380px; overflow-wrap: anywhere; }
+  tr.hl td { background: rgba(79, 140, 255, .12); }
+
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .badge.HIT    { background: rgba(52,201,138,.15); color: var(--green); }
+  .badge.MISS   { background: rgba(255,180,84,.15); color: var(--amber); }
+  .badge.BYPASS { background: rgba(139,147,163,.15); color: var(--muted); }
+
+  .muted { color: var(--muted); } .empty { color: var(--muted); padding: 24px; text-align: center; }
+  .err { color: var(--red); font-size: 12px; margin-top: 6px; min-height: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Semantic Cache Proxy</h1>
+    <div class="sub">hit-rate · cost saved · latency — live from <code id="base-url"></code></div>
+  </div>
+  <nav>
+    <button data-tab="metrics" class="active">Metrics</button>
+    <button data-tab="cache">Cache Browser</button>
+    <button data-tab="sweep">Threshold Sweep</button>
+    <button data-tab="logs">Request Log</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ METRICS ============ -->
+  <section id="tab-metrics" class="tab active">
+    <div class="row">
+      <button class="primary" onclick="loadMetrics()">Refresh now</button>
+      <label class="toggle"><input type="checkbox" id="auto-metrics" checked> auto-refresh every 5 s</label>
+      <span id="metrics-updated" class="muted" style="font-size:12px"></span>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="label">Hit rate</div><div class="value" id="m-hitrate">–</div></div>
+      <div class="card"><div class="label">Total requests</div><div class="value" id="m-total">–</div></div>
+      <div class="card"><div class="label">Estimated cost saved</div><div class="value" id="m-cost">–</div></div>
+      <div class="card"><div class="label">Avg latency · HIT vs MISS</div><div class="value" style="font-size:18px" id="m-lat">–</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="label">Hit / miss split</div><canvas id="chart-split"></canvas></div>
+      <div class="card"><div class="label">Average latency by outcome (ms)</div><canvas id="chart-latency"></canvas></div>
+    </div>
+  </section>
+
+  <!-- ============ CACHE BROWSER ============ -->
+  <section id="tab-cache" class="tab">
+    <div class="row">
+      <input type="text" id="cache-search" placeholder="Search prompts…">
+      <button class="small" onclick="loadCache()">Reload</button>
+      <span style="flex:1"></span>
+      <button class="danger" onclick="purgeAll()">Purge ALL</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>ID</th><th>Prompt</th><th>Model</th><th>Created</th><th>Expires</th><th>Hits</th><th>Last hit</th><th></th>
+      </tr></thead>
+      <tbody id="cache-body"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+    </table>
+    <div id="cache-count" class="muted" style="margin-top:8px;font-size:12px"></div>
+  </section>
+
+  <!-- ============ THRESHOLD SWEEP ============ -->
+  <section id="tab-sweep" class="tab">
+    <div class="row">
+      <input type="text" id="sweep-thresholds" value="0.80, 0.82, 0.85, 0.88, 0.90, 0.93, 0.95">
+      <button class="primary" onclick="runSweep()">Run sweep</button>
+      <span class="muted" style="font-size:12px">Comma-separated cosine thresholds evaluated against the labeled pair set.</span>
+    </div>
+    <div class="err" id="sweep-error"></div>
+    <div class="card" style="margin-bottom:14px"><canvas id="chart-sweep"></canvas></div>
+    <table>
+      <thead><tr><th>Threshold</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+      <tbody id="sweep-body"><tr><td colspan="4" class="empty">Run a sweep to see precision/recall.</td></tr></tbody>
+    </table>
+    <p class="muted" style="margin-top:10px;font-size:12px">
+      Default production threshold is <b>0.85</b> — measured F1-optimal on the labeled set (see docs/THRESHOLD_ANALYSIS.md).
+    </p>
+  </section>
+
+  <!-- ============ REQUEST LOG ============ -->
+  <section id="tab-logs" class="tab">
+    <div class="row">
+      <button class="primary" onclick="loadLogs()">Refresh</button>
+      <label class="toggle"><input type="checkbox" id="auto-logs" checked> poll every 4 s while visible</label>
+      <select id="log-limit" style="background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:7px">
+        <option>25</option><option selected>50</option><option>100</option><option>250</option>
+      </select>
+    </div>
+    <table>
+      <thead><tr><th>Time</th><th>Outcome</th><th>Prompt</th><th>Similarity</th><th>Latency</th><th>Tokens in/out</th><th>Est. cost</th></tr></thead>
+      <tbody id="logs-body"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+$("base-url").textContent = location.origin;
+
+// ---------- helpers ----------
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(`${path} → HTTP ${r.status}`);
+  return r.json();
+}
+function fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+}
+function fmtAgo(ts) {
+  if (!ts) return "—";
+  const s = Math.round(Date.now() / 1000 - ts);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+// ---------- tabs ----------
+let activeTab = "metrics";
+function activateTab(name) {
+  const btn = document.querySelector(`nav button[data-tab="${name}"]`);
+  if (!btn) return;
+  document.querySelectorAll("nav button").forEach(x => x.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  $("tab-" + name).classList.add("active");
+  activeTab = name;
+  if (activeTab === "metrics") loadMetrics();
+  if (activeTab === "cache") loadCache();
+  if (activeTab === "logs") loadLogs();
+}
+document.querySelectorAll("nav button").forEach(b => { b.onclick = () => activateTab(b.dataset.tab); });
+
+// deep-link support: /dashboard?tab=sweep opens on that tab
+const urlTab = new URLSearchParams(location.search).get("tab");
+if (urlTab) {
+  activateTab(urlTab);
+  if (urlTab === "sweep") runSweep();  // pre-run so the view isn't empty on deep-link
+}
+
+// ---------- metrics ----------
+let splitChart = null, latencyChart = null;
+async function loadMetrics() {
+  try {
+    const m = await api("/metrics");
+    $("m-hitrate").innerHTML = (m.hit_rate * 100).toFixed(1) + "<small> %</small>";
+    $("m-total").textContent = m.total_requests;
+    $("m-cost").innerHTML = "$" + m.estimated_cost_saved_usd.toFixed(4);
+    const f = v => v >= 10 ? v.toFixed(0) : v.toFixed(2);
+    $("m-lat").innerHTML =
+      `<span style="color:var(--green)">${f(m.avg_latency_hit_ms ?? 0)} ms</small>` +
+      ` <span class="muted">vs</span> <span style="color:var(--amber)">${f(m.avg_latency_miss_ms ?? 0)} ms</span>`;
+    $("metrics-updated").textContent = "updated " + new Date().toLocaleTimeString();
+
+    const hits = Math.round(m.total_requests * m.hit_rate);
+    const misses = m.total_requests - hits;
+    const splitData = { labels: ["HIT", "MISS"], datasets: [{ data: [hits, misses], backgroundColor: ["#34c98a", "#ffb454"], borderWidth: 0 }] };
+    if (splitChart) { splitChart.data = splitData; splitChart.update(); }
+    else splitChart = new Chart($("chart-split"), { type: "doughnut", data: splitData, options: { plugins: { legend: { labels: { color: "#8b93a3" } } } } });
+
+    const latData = {
+      labels: ["HIT", "MISS"],
+      datasets: [{ label: "avg latency (ms)", data: [m.avg_latency_hit_ms ?? 0, m.avg_latency_miss_ms ?? 0], backgroundColor: ["#34c98a", "#ffb454"], borderRadius: 6 }],
+    };
+    if (latencyChart) { latencyChart.data = latData; latencyChart.update(); }
+    else latencyChart = new Chart($("chart-latency"), { type: "bar", data: latData, options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: "#8b93a3" }, grid: { display: false } }, y: { ticks: { color: "#8b93a3" }, grid: { color: "#2a2f3a" } } } } });
+  } catch (e) { $("metrics-updated").textContent = "error: " + e.message; }
+}
+setInterval(() => { if ($("auto-metrics").checked && activeTab === "metrics") loadMetrics(); }, 5000);
+
+// ---------- cache browser ----------
+async function loadCache() {
+  const q = $("cache-search").value.trim();
+  try {
+    const data = await api("/cache/entries" + (q ? `?q=${encodeURIComponent(q)}` : ""));
+    const rows = data.entries.map(e => `
+      <tr>
+        <td class="num">${e.entry_id}</td>
+        <td class="prompt-cell" title="${esc(e.prompt_text)}">${esc(e.prompt_text.length > 90 ? e.prompt_text.slice(0, 90) + "…" : e.prompt_text)}</td>
+        <td>${esc(e.model_used)}</td>
+        <td title="${new Date(e.created_at * 1000).toLocaleString()}">${fmtAgo(e.created_at)}</td>
+        <td title="${new Date(e.expires_at * 1000).toLocaleString()}">${new Date(e.expires_at * 1000) < new Date() ? "<span class='muted'>expired</span>" : fmtAgo(e.expires_at)}</td>
+        <td class="num">${e.hit_count}</td>
+        <td>${fmtAgo(e.last_hit_at)}</td>
+        <td><button class="danger" onclick="purgeOne(${e.entry_id})">Purge</button></td>
+      </tr>`);
+    $("cache-body").innerHTML = rows.length ? rows.join("") : `<tr><td colspan="8" class="empty">No cache entries${q ? " matching “" + esc(q) + "”" : ""}.</td></tr>`;
+    $("cache-count").textContent = `${data.entries.length} entr${data.entries.length === 1 ? "y" : "ies"}${q ? " (filtered)" : ""}`;
+  } catch (e) { $("cache-count").textContent = "error: " + e.message; }
+}
+$("cache-search").addEventListener("input", () => loadCache());
+async function purgeOne(id) {
+  if (!confirm(`Purge cache entry #${id}?`)) return;
+  await api("/cache/purge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entry_id: id }) });
+  loadCache();
+}
+async function purgeAll() {
+  if (!confirm("Purge the ENTIRE cache? Log history is preserved.")) return;
+  await api("/cache/purge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+  loadCache();
+}
+
+// ---------- sweep ----------
+let sweepChart = null;
+async function runSweep() {
+  $("sweep-error").textContent = "";
+  const raw = $("sweep-thresholds").value.split(",").map(x => parseFloat(x.trim())).filter(x => !isNaN(x));
+  if (!raw.length) { $("sweep-error").textContent = "Enter at least one numeric threshold."; return; }
+  try {
+    const data = await api("/eval/threshold-sweep", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ thresholds: raw }) });
+    const rs = data.results;
+    let best = rs.reduce((a, b) => (b.f1 > a.f1 ? b : a), rs[0]);
+    $("sweep-body").innerHTML = rs.map(r => `
+      <tr class="${r.threshold === best.threshold ? "hl" : ""}">
+        <td class="num">${r.threshold.toFixed(2)}${r.threshold === best.threshold ? ' <span class="badge HIT">best F1</span>' : ""}</td>
+        <td class="num">${r.precision.toFixed(4)}</td>
+        <td class="num">${r.recall.toFixed(4)}</td>
+        <td class="num">${r.f1.toFixed(4)}</td>
+      </tr>`).join("");
+    const chartData = {
+      labels: rs.map(r => r.threshold.toFixed(2)),
+      datasets: [
+        { label: "precision", data: rs.map(r => r.precision), borderColor: "#4f8cff", tension: .3 },
+        { label: "recall", data: rs.map(r => r.recall), borderColor: "#34c98a", tension: .3 },
+        { label: "F1", data: rs.map(r => r.f1), borderColor: "#ffb454", tension: .3 },
+      ],
+    };
+    if (sweepChart) { sweepChart.data = chartData; sweepChart.update(); }
+    else sweepChart = new Chart($("chart-sweep"), {
+      type: "line", data: chartData,
+      options: { scales: { x: { ticks: { color: "#8b93a3" }, grid: { color: "#2a2f3a" } }, y: { min: 0, max: 1, ticks: { color: "#8b93a3" }, grid: { color: "#2a2f3a" } } }, plugins: { legend: { labels: { color: "#8b93a3" } } } },
+    });
+  } catch (e) { $("sweep-error").textContent = e.message; }
+}
+
+// ---------- logs ----------
+async function loadLogs() {
+  try {
+    const limit = $("log-limit").value;
+    const data = await api(`/logs/recent?limit=${limit}`);
+    $("logs-body").innerHTML = data.logs.length ? data.logs.map(l => `
+      <tr>
+        <td class="num muted">${fmtTime(l.timestamp)}</td>
+        <td><span class="badge ${esc(l.outcome)}">${esc(l.outcome)}</span></td>
+        <td class="prompt-cell" title="${esc(l.prompt_text)}">${esc(l.prompt_text.length > 70 ? l.prompt_text.slice(0, 70) + "…" : l.prompt_text)}</td>
+        <td class="num">${l.similarity_score != null ? l.similarity_score.toFixed(4) : "—"}</td>
+        <td class="num">${l.latency_ms.toFixed(1)} ms</td>
+        <td class="num">${l.tokens_in} / ${l.tokens_out}</td>
+        <td class="num">$${l.estimated_cost_usd.toFixed(6)}</td>
+      </tr>`).join("") : `<tr><td colspan="7" class="empty">No requests logged yet.</td></tr>`;
+  } catch (e) { $("logs-body").innerHTML = `<tr><td colspan="7" class="empty">error: ${esc(e.message)}</td></tr>`; }
+}
+setInterval(() => { if ($("auto-logs").checked && activeTab === "logs") loadLogs(); }, 4000);
+
+// ---------- initial load ----------
+loadMetrics();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Render Blueprint — deploy with "New +" → "Blueprint" after pushing this repo.
+#
+# Notes:
+# - MOCK_LLM=true by default so a public demo can never spend money.
+#   To proxy a real LLM: set MOCK_LLM=false and add LLM_API_KEY (secret)
+#   in the Render dashboard, AND set a spend cap on that API key first.
+# - SQLite lives on the instance filesystem: on the free plan the cache
+#   resets on every deploy/restart. Attach a persistent disk (paid) or
+#   swap to a managed DB for durability.
+
+services:
+  - type: web
+    name: semantic-cache-proxy
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: MOCK_LLM
+        value: "true"

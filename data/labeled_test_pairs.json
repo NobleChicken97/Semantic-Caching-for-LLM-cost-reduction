@@ -1,0 +1,194 @@
+{
+  "description": "Labeled test pairs for threshold validation of the semantic cache. should_match=1 means the two prompts are paraphrases that a correct cache SHOULD serve as hits; 0 means they must NOT match.",
+  "source": "proxy.database.seed_test_pairs()",
+  "model": "BAAI/bge-small-en-v1.5",
+  "count": 31,
+  "pairs": [
+    {
+      "pair_id": 1,
+      "prompt_a": "What is the capital of France?",
+      "prompt_b": "Tell me the capital of France.",
+      "should_match": true
+    },
+    {
+      "pair_id": 2,
+      "prompt_a": "How do I reset my password?",
+      "prompt_b": "I forgot my password, how can I reset it?",
+      "should_match": true
+    },
+    {
+      "pair_id": 3,
+      "prompt_a": "Summarize the plot of Inception.",
+      "prompt_b": "Can you give me a summary of the movie Inception?",
+      "should_match": true
+    },
+    {
+      "pair_id": 4,
+      "prompt_a": "What is 2 + 2?",
+      "prompt_b": "Calculate two plus two.",
+      "should_match": true
+    },
+    {
+      "pair_id": 5,
+      "prompt_a": "Explain quantum computing in simple terms.",
+      "prompt_b": "Give me a simple explanation of quantum computing.",
+      "should_match": true
+    },
+    {
+      "pair_id": 6,
+      "prompt_a": "Write a haiku about the ocean.",
+      "prompt_b": "Compose a haiku on the sea.",
+      "should_match": true
+    },
+    {
+      "pair_id": 7,
+      "prompt_a": "What year did WWII end?",
+      "prompt_b": "When did World War II finish?",
+      "should_match": true
+    },
+    {
+      "pair_id": 8,
+      "prompt_a": "Translate 'hello' to Spanish.",
+      "prompt_b": "How do you say hello in Spanish?",
+      "should_match": true
+    },
+    {
+      "pair_id": 9,
+      "prompt_a": "List three benefits of exercise.",
+      "prompt_b": "Name three advantages of working out.",
+      "should_match": true
+    },
+    {
+      "pair_id": 10,
+      "prompt_a": "Define machine learning.",
+      "prompt_b": "What is the definition of machine learning?",
+      "should_match": true
+    },
+    {
+      "pair_id": 11,
+      "prompt_a": "What is the capital of France?",
+      "prompt_b": "What is the population of France?",
+      "should_match": false
+    },
+    {
+      "pair_id": 12,
+      "prompt_a": "Summarize the plot of Inception.",
+      "prompt_b": "Who directed Inception?",
+      "should_match": false
+    },
+    {
+      "pair_id": 13,
+      "prompt_a": "How do I reset my password?",
+      "prompt_b": "How do I change my username?",
+      "should_match": false
+    },
+    {
+      "pair_id": 14,
+      "prompt_a": "What is 2 + 2?",
+      "prompt_b": "What is the square root of 16?",
+      "should_match": false
+    },
+    {
+      "pair_id": 15,
+      "prompt_a": "Write a haiku about the ocean.",
+      "prompt_b": "Write a limerick about the ocean.",
+      "should_match": false
+    },
+    {
+      "pair_id": 16,
+      "prompt_a": "Explain quantum computing in simple terms.",
+      "prompt_b": "Explain classical computing in simple terms.",
+      "should_match": false
+    },
+    {
+      "pair_id": 17,
+      "prompt_a": "What year did WWII end?",
+      "prompt_b": "What year did WWI start?",
+      "should_match": false
+    },
+    {
+      "pair_id": 18,
+      "prompt_a": "Translate 'hello' to Spanish.",
+      "prompt_b": "Translate 'goodbye' to Spanish.",
+      "should_match": false
+    },
+    {
+      "pair_id": 19,
+      "prompt_a": "List three benefits of exercise.",
+      "prompt_b": "List three risks of over-exercising.",
+      "should_match": false
+    },
+    {
+      "pair_id": 20,
+      "prompt_a": "Define machine learning.",
+      "prompt_b": "Define deep learning.",
+      "should_match": false
+    },
+    {
+      "pair_id": 21,
+      "prompt_a": "What is AI?",
+      "prompt_b": "Define artificial intelligence.",
+      "should_match": true
+    },
+    {
+      "pair_id": 22,
+      "prompt_a": "Hi",
+      "prompt_b": "Goodbye",
+      "should_match": false
+    },
+    {
+      "pair_id": 23,
+      "prompt_a": "What is the capital of France?",
+      "prompt_b": "What is the captial of France?",
+      "should_match": true
+    },
+    {
+      "pair_id": 24,
+      "prompt_a": "Explain what this Python code does: sorted(items, key=len)",
+      "prompt_b": "What does the Python expression sorted(items, key=len) do?",
+      "should_match": true
+    },
+    {
+      "pair_id": 25,
+      "prompt_a": "def add(a, b): return a + b",
+      "prompt_b": "def multiply(a, b): return a * b",
+      "should_match": false
+    },
+    {
+      "pair_id": 26,
+      "prompt_a": "How do I make coffee?",
+      "prompt_b": "What's the best way to brew coffee?",
+      "should_match": true
+    },
+    {
+      "pair_id": 27,
+      "prompt_a": "My laptop won't turn on.",
+      "prompt_b": "My laptop does not start when I press the power button.",
+      "should_match": true
+    },
+    {
+      "pair_id": 28,
+      "prompt_a": "Recommend a good sci-fi book.",
+      "prompt_b": "Can you suggest a great science fiction novel?",
+      "should_match": true
+    },
+    {
+      "pair_id": 29,
+      "prompt_a": "Fix my bicycle tire.",
+      "prompt_b": "Translate 'good morning' to French.",
+      "should_match": false
+    },
+    {
+      "pair_id": 30,
+      "prompt_a": "Best programming language for beginners?",
+      "prompt_b": "Give me a brief history of the Roman Empire.",
+      "should_match": false
+    },
+    {
+      "pair_id": 31,
+      "prompt_a": "How do I bake chocolate chip cookies?",
+      "prompt_b": "How do I change a flat tire on a car?",
+      "should_match": false
+    }
+  ]
+}

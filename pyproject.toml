@@ -1,0 +1,18 @@
+[project]
+name = "semantic-cache-proxy"
+version = "0.2.0"
+description = "Semantic caching proxy for LLM APIs — exact-match + BGE-small embedding similarity, with TTL invalidation, bypass header, and hit-rate/cost metrics."
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.0.0",
+    "sentence-transformers>=3.0.0",
+    "numpy>=1.24.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
