@@ -10,7 +10,7 @@ import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 
-from .cache import get_metrics, list_cache_entries, purge, recent_logs
+from .cache import get_metrics, list_cache_entries, prune_old_logs, purge, recent_logs
 from .config import get_settings
 from .database import init_db, seed_test_pairs
 from .eval import run_threshold_sweep
@@ -53,8 +53,14 @@ async def require_admin_token(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: shared HTTP client, init DB, seed data, warm embeddings."""
-    if not get_settings().admin_token:
+    cfg = get_settings()
+    if not cfg.admin_token:
         logger.warning("ADMIN_TOKEN not set — admin endpoints are unauthenticated.")
+    if not cfg.user_id_pepper:
+        logger.warning(
+            "USER_ID_PEPPER not set — derived user_ids are keyed by an empty "
+            "secret. Required before serving real BYOK traffic."
+        )
 
     # One shared httpx client (connection pool) reused by every upstream
     # call instead of a new client per request (review fix #7).
@@ -63,6 +69,15 @@ async def lifespan(app: FastAPI):
     try:
         init_db()
         seed_test_pairs()
+        # Phase 7.6: lazy retention pass at startup — roll >30-day raw logs
+        # into the permanent daily_metrics table and prune them. Cheap at
+        # this scale; a scheduler is deliberately not built for it.
+        try:
+            pruned = prune_old_logs()
+            if pruned:
+                logger.info("Pruned %d request-log row(s) past the 30-day window.", pruned)
+        except Exception:
+            logger.exception("Log retention pass failed — will retry next startup.")
         logger.info("Database initialized.")
 
         # Preload the embedding model so the first request isn't slow

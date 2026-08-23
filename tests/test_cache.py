@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 
 import pytest
 
@@ -17,6 +18,7 @@ from proxy.cache import (
     get_metrics,
     log_request,
     lookup,
+    prune_old_logs,
     purge,
     store,
 )
@@ -66,6 +68,44 @@ def isolated_db(monkeypatch):
         os.unlink(path)
     except OSError:
         pass
+
+
+class TestModelAwareCost:
+    """Phase 7.4 — pricing table; unknown models cost $0.00."""
+
+    def test_known_model_uses_table(self):
+        from proxy.routes.chat import _estimate_cost
+
+        resp = {"model": "gpt-3.5-turbo",
+                "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}}
+        assert _estimate_cost(resp) == pytest.approx(2.0)
+
+    def test_unknown_model_costs_zero(self):
+        from proxy.routes.chat import _estimate_cost
+
+        resp = {"model": "some-free-openrouter-model",
+                "usage": {"prompt_tokens": 999_999, "completion_tokens": 999_999}}
+        assert _estimate_cost(resp) == 0.0
+
+    def test_prefix_match_inherits_family_pricing(self):
+        from proxy.routes.chat import _estimate_cost
+
+        resp = {"model": "gpt-3.5-turbo-1106",
+                "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 0}}
+        assert _estimate_cost(resp) == pytest.approx(0.5)
+
+    def test_env_override_extends_table(self, monkeypatch):
+        from proxy.config import get_settings
+        from proxy.routes.chat import _estimate_cost
+
+        monkeypatch.setenv("MODEL_PRICING", "gemini-flash=1.00,3.00")
+        get_settings.cache_clear()
+        try:
+            resp = {"model": "gemini-flash",
+                    "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 0}}
+            assert _estimate_cost(resp) == pytest.approx(1.0)
+        finally:
+            get_settings.cache_clear()
 
 
 class TestSettingsFactory:
@@ -258,6 +298,165 @@ class TestTtlExpiry:
 
         result = lookup("Tell me the boiling point of water.")
         assert result is None
+
+
+class TestUserScoping:
+    """Phase 7.3 — cache entries never cross users."""
+
+    def test_derive_user_id_deterministic_and_distinct(self):
+        from proxy.security import derive_user_id
+
+        assert derive_user_id("sk-alice") == derive_user_id("sk-alice")
+        assert derive_user_id("sk-alice") != derive_user_id("sk-bob")
+        assert len(derive_user_id("sk-alice")) == 24
+
+    def test_same_prompt_two_users_two_entries_no_cross_hit(self):
+        resp_a = {**SAMPLE_RESPONSE, "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": "Alice's Paris"},
+             "finish_reason": "stop"}]}
+        resp_b = {**SAMPLE_RESPONSE, "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": "Bob's Paris"},
+             "finish_reason": "stop"}]}
+
+        id_a = store("What is the capital of France?", resp_a, "gpt-3.5-turbo", user_id="alice")
+        id_b = store("What is the capital of France?", resp_b, "gpt-3.5-turbo", user_id="bob")
+        assert id_a != id_b  # composite unique allows one entry per (hash, user)
+
+        hit_a = lookup("What is the capital of France?", model="gpt-3.5-turbo", user_id="alice")
+        hit_b = lookup("What is the capital of France?", model="gpt-3.5-turbo", user_id="bob")
+        assert hit_a["response"]["choices"][0]["message"]["content"] == "Alice's Paris"
+        assert hit_b["response"]["choices"][0]["message"]["content"] == "Bob's Paris"
+
+    def test_semantic_tier_never_crosses_users(self):
+        store("What is the capital of France?", SAMPLE_RESPONSE, "gpt-3.5-turbo", user_id="alice")
+
+        # Bob's paraphrase must NOT semantically match Alice's cached answer.
+        miss = lookup("Tell me the capital of France.", model="gpt-3.5-turbo", user_id="bob")
+        assert miss is None
+
+        # ...but Alice's own paraphrase still hits her entry.
+        hit = lookup("Tell me the capital of France.", model="gpt-3.5-turbo", user_id="alice")
+        assert hit is not None
+
+    def test_default_user_is_local_for_legacy_calls(self):
+        store("legacy prompt", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+        from proxy.cache import _exact_lookup
+
+        assert _exact_lookup("legacy prompt") is not None
+        assert _exact_lookup("legacy prompt", user_id="someone-else") is None
+
+
+class TestLogRetention:
+    """Phase 7.6 — 30-day hot/cold retention with a permanent daily rollup."""
+
+    def _seed(self):
+        # Two HITs and one MISS older than the window, one fresh row.
+        log_request("old-hit-1", "HIT", 1.0, estimated_cost_usd=0.001,
+                    tokens_in=10, tokens_out=20)
+        log_request("old-hit-2", "HIT", 1.0, estimated_cost_usd=0.002,
+                    tokens_in=5, tokens_out=5)
+        log_request("old-miss", "MISS", 2.0, estimated_cost_usd=0.010,
+                    tokens_in=999, tokens_out=999)
+        log_request("fresh-hit", "HIT", 1.0, estimated_cost_usd=0.004,
+                    tokens_in=7, tokens_out=3)
+
+        old = time.time() - 40 * 86_400
+        from proxy.database import get_connection
+
+        conn = get_connection()
+        try:
+            conn.execute(
+                "UPDATE request_log SET timestamp = ? "
+                "WHERE prompt_text IN ('old-hit-1','old-hit-2','old-miss')",
+                (old,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_prune_rolls_up_then_deletes(self):
+        self._seed()
+
+        pruned = prune_old_logs(days=30)
+        assert pruned == 3
+
+        from proxy.database import get_connection
+
+        conn = get_connection()
+        try:
+            remaining = conn.execute(
+                "SELECT prompt_text FROM request_log"
+            ).fetchall()
+            assert [r["prompt_text"] for r in remaining] == ["fresh-hit"]
+
+            rollup = conn.execute("SELECT * FROM daily_metrics").fetchone()
+        finally:
+            conn.close()
+        assert rollup["total_requests"] == 3
+        assert rollup["hits"] == 2
+        assert rollup["tokens_saved"] == 40  # only HIT rows count as saved
+
+    def test_metrics_totals_survive_pruning(self):
+        self._seed()
+        before = get_metrics()
+
+        prune_old_logs(days=30)
+        after = get_metrics()
+
+        for key in ("total_requests", "hit_rate",
+                    "estimated_cost_saved_usd", "total_tokens_saved"):
+            assert after[key] == pytest.approx(before[key]), key
+        # The fresh row is still raw and visible.
+        assert after["total_requests"] == 4
+
+    def test_prune_is_idempotent(self):
+        self._seed()
+        assert prune_old_logs(days=30) == 3
+        assert prune_old_logs(days=30) == 0
+
+        m = get_metrics()
+        assert m["total_requests"] == 4
+        # 40 from the pruned rollup + 10 still in the raw window.
+        assert m["total_tokens_saved"] == 50
+
+
+class TestTokensSavedAndPerUserMetrics:
+    """Phase 7.4 — headline tokens-saved metric + per-user breakdown."""
+
+    def test_tokens_saved_counts_hits_only(self):
+        log_request("a", "HIT", 1.0, estimated_cost_usd=0.001,
+                    tokens_in=10, tokens_out=20)
+        log_request("b", "MISS", 2.0, estimated_cost_usd=0.002,
+                    tokens_in=100, tokens_out=200)  # a real generation: not saved
+        log_request("c", "BYPASS", 3.0, tokens_in=5, tokens_out=5)
+        log_request("d", "ERROR", 4.0)
+
+        m = get_metrics()
+        assert m["total_requests"] == 4
+        assert m["total_tokens_saved"] == 30
+
+    def test_per_user_breakdown_sums_to_global(self):
+        log_request("p1", "HIT", 1.0, estimated_cost_usd=0.001,
+                    tokens_in=10, tokens_out=20, user_id="alice")
+        log_request("p2", "HIT", 1.0, estimated_cost_usd=0.002,
+                    tokens_in=1, tokens_out=2, user_id="alice")
+        log_request("p3", "HIT", 1.0, estimated_cost_usd=0.004,
+                    tokens_in=100, tokens_out=200, user_id="bob")
+        log_request("p4", "MISS", 1.0, user_id="bob")
+
+        m = get_metrics()
+        by_user = {u["user_id"]: u for u in m["per_user"]}
+        assert set(by_user) == {"alice", "bob"}
+        assert by_user["alice"]["tokens_saved"] == 33
+        assert by_user["alice"]["hits"] == 2
+        assert by_user["alice"]["total_requests"] == 2
+        assert by_user["bob"]["tokens_saved"] == 300
+        assert by_user["bob"]["hits"] == 1
+        assert by_user["bob"]["total_requests"] == 2
+        assert sum(u["tokens_saved"] for u in m["per_user"]) == m["total_tokens_saved"]
+        assert round(
+            sum(u["cost_saved_usd"] for u in m["per_user"]), 6
+        ) == m["estimated_cost_saved_usd"]
 
 
 class TestSemanticScanGuardrail:

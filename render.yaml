@@ -2,11 +2,17 @@
 #
 # Notes:
 # - MOCK_LLM=true by default so a public demo can never spend money.
-#   To proxy a real LLM: set MOCK_LLM=false and add LLM_API_KEY (secret)
-#   in the Render dashboard, AND set a spend cap on that API key first.
-# - SQLite lives on the instance filesystem: on the free plan the cache
-#   resets on every deploy/restart. Attach a persistent disk (paid) or
-#   swap to a managed DB for durability.
+#   For BYOK (Phase 7) traffic: set MOCK_LLM=false in the dashboard — callers
+#   then authenticate with their OWN provider keys via
+#   `Authorization: Bearer <key>`; the server never spends its own quota.
+#   Also set USER_ID_PEPPER to a random 32-byte hex value (generate once:
+#   python -c "import secrets; print(secrets.token_hex(32))") and NEVER rotate it.
+# - Persistence: SQLite lives on the instance filesystem, which resets on
+#   deploys/restarts for ephemeral plans. To keep cache + log history across
+#   redeploys, uncomment the `disk:` block below and move to a paid plan
+#   (persistent disks require a paid instance tier), then set:
+#       CACHE_DB_PATH=/var/data/cache.db
+#   The app creates/migrates the schema there automatically on startup.
 
 services:
   - type: web
@@ -17,3 +23,10 @@ services:
     envVars:
       - key: MOCK_LLM
         value: "true"
+      # Enable together with the disk below once on a paid plan:
+      # - key: CACHE_DB_PATH
+      #   value: /var/data/cache.db
+    # disk:
+    #   name: cache-disk
+    #   mountPath: /var/data
+    #   sizeGB: 1

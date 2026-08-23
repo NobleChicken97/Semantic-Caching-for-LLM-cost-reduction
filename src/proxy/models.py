@@ -31,6 +31,10 @@ class ChatCompletionRequest(BaseModel):
     presence_penalty: float | None = Field(default=0, ge=-2, le=2)
     frequency_penalty: float | None = Field(default=0, ge=-2, le=2)
     user: str | None = None
+    # Phase 7 BYOK extension (not part of the OpenAI schema): selects an
+    # allowlisted provider by name. Never forwarded upstream — chat.py
+    # excludes this field from the payload sent to the LLM API.
+    provider: str | None = None
 
     def canonical_prompt(self) -> str:
         """Return a stable, hashable representation of the prompt.
@@ -87,12 +91,25 @@ class ChatCompletionResponse(BaseModel):
 # Metrics / purge models
 # ---------------------------------------------------------------------------
 
+class UserUsage(BaseModel):
+    """Per-user aggregate (Phase 7): one row per derived user_id."""
+
+    user_id: str
+    total_requests: int
+    hits: int
+    tokens_saved: int
+    cost_saved_usd: float = 0.0
+
+
 class MetricsResponse(BaseModel):
     hit_rate: float
     total_requests: int
     estimated_cost_saved_usd: float
     avg_latency_hit_ms: float | None = None
     avg_latency_miss_ms: float | None = None
+    # Phase 7 headline metric + per-user breakdown.
+    total_tokens_saved: int = 0
+    per_user: list[UserUsage] = []
 
 
 class PurgeRequest(BaseModel):
@@ -126,6 +143,7 @@ class CacheEntryOut(BaseModel):
     entry_id: int
     prompt_text: str
     model_used: str
+    user_id: str
     created_at: float
     expires_at: float
     hit_count: int
@@ -141,6 +159,7 @@ class LogEntryOut(BaseModel):
     timestamp: float
     prompt_text: str
     outcome: str  # "HIT" | "MISS" | "BYPASS" | "ERROR"
+    user_id: str
     matched_entry_id: int | None = None
     similarity_score: float | None = None
     latency_ms: float

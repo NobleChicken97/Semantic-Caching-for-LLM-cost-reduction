@@ -222,3 +222,22 @@ scanning (Security tab alerts persist until resolved), and Dependabot's separate
 security-update PRs remain active. github-actions ecosystem stays on weekly grouped updates.
 
 Docs consistency pass (same day): README API reference now documents ADMIN_TOKEN gating on purge/sweep/dashboard; stale "~2.2 GB" / "45 tests" / "51 tests" claims corrected across report.md, todos.md and guide.md.
+
+
+---
+
+## 2026-08-23 - Phase 7: BYOK Production Push (7.1-7.7 code complete)
+
+Goal: 10-15 known users bring free-tier keys (OpenRouter / Gemini) through one proxy with zero cost risk and zero cross-user cache leakage.
+
+| Item | Shipped |
+|------|---------|
+| 7.1 Provider allowlist | PROVIDER_BASE_URLS {openrouter, gemini}; X-LLM-Base-URL header or provider body field (excluded from upstream payload); exact-match + normalization; non-allowlisted -> 400 before any network call. 6 tests incl. precedence + rejection-before-forward |
+| 7.2 BYOK forwarding | Authorization: Bearer parsed; MOCK_LLM=false + keyless -> 401 OpenAI-shaped (server key NEVER substituted); forward_to_llm(api_key=, base_url=) with ValueError defense-in-depth. 6 tests |
+| 7.3 Identity + scoping | security.py derive_user_id = HMAC-SHA256(USER_ID_PEPPER, key)[:24]; LOCAL_USER_ID='local' for keyless mock traffic; startup warning when pepper unset. SCHEMA V2 MIGRATION: cache_entries rebuilt with user_id NOT NULL DEFAULT 'local' and inline UNIQUE(prompt_hash) replaced by composite UNIQUE(prompt_hash,user_id) - closes the cross-user INSERT collision the plan missed; request_log ALTER+backfill; legacy rows land under 'local'. Both lookup tiers + store + log_request scoped. Raw key never stored/logged. Tests: determinism, cross-user exact/semantic isolation, legacy rebuild preservation+idempotency, fresh-install schema, e2e multi-user via ASGI |
+| 7.4 Metrics | total_tokens_saved (HIT rows only) headline on /metrics + dashboard card; per-user breakdown table; _estimate_cost now model-aware from DEFAULT_MODEL_PRICING + MODEL_PRICING env override (prefix match), unknown models = .00. Tests: hit-only sums, per-user==global reconciliation, zero-cost unknowns, prefix inheritance, env override |
+| 7.5 Persistence | render.yaml ships commented persistent-disk block (/var/data + CACHE_DB_PATH) - enablement needs paid tier, documented in blueprint comments + TECHNICAL_DETAIL |
+| 7.6 Retention | daily_metrics permanent rollup table; prune_old_logs(30d) transactional roll-up-and-delete, idempotent, wired lazily into lifespan; get_metrics unions rollup+raw so lifetime totals survive pruning. Tests: rollup correctness, totals-survive boundary, idempotency |
+| 7.7 Verification | Automated: multi-user/provider ASGI tests green. Manual real-provider runbook added to README BYOK section |
+
+Post-phase state: **100 tests passing** (was 68), ruff clean. Remaining human steps: generate USER_ID_PEPPER + ADMIN_TOKEN in the deployment env, attach Render disk (optional, paid), run README pre-launch runbook with two real keys, then open access.

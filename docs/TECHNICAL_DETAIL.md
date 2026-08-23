@@ -150,3 +150,15 @@ Each item below is a deliberate scope decision, not an oversight:
 - **The shared httpx client requires a running lifespan.** Direct calls to
   `forward_to_llm` without a lifespan (scripts/tests) fall back to a one-off
   client per call by design.
+- **Per-user metrics reflect the raw 30-day window.** Lifetime totals
+  (requests, hits, hit-rate, cost saved, tokens saved) survive pruning via
+  the permanent `daily_metrics` rollup, but that rollup is global by design —
+  per-user breakdowns only cover rows still in `request_log`.
+- **BYOK identity depends on `USER_ID_PEPPER`.** It is never rotated (by
+  design): rotating would re-derive every user_id and orphan all existing
+  scoped cache history. Treated like ADMIN_TOKEN: generate once at deploy.
+- **Persistence:** SQLite on an ephemeral filesystem resets cache/log history
+  on redeploy. The Render blueprint ships with a commented-out persistent-disk
+  block (`/var/data` + `CACHE_DB_PATH=/var/data/cache.db`) — enable it on a
+  paid plan; schema migrations run automatically wherever the file lives.
+  MongoDB Atlas remains a deliberate future migration, not a stopgap.

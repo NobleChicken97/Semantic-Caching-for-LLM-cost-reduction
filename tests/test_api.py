@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import ClassVar
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -153,7 +154,7 @@ class TestRequestCoalescing:
 
         calls = {"count": 0}
 
-        async def slow_mock_forward(request_body, *, client=None):
+        async def slow_mock_forward(request_body, *, client=None, api_key=None, base_url=None):
             calls["count"] += 1
             await asyncio.sleep(0.25)  # simulate real upstream latency
             return _mock_response(request_body), 0.25
@@ -184,7 +185,7 @@ class TestUpstreamErrors:
 
         from proxy.routes import chat as chat_module
 
-        async def raise_status(request_body, *, client=None):
+        async def raise_status(request_body, *, client=None, api_key=None, base_url=None):
             req = httpx.Request("POST", "https://upstream.test/v1/chat/completions")
             resp = httpx.Response(429, request=req)
             raise httpx.HTTPStatusError("rate limited", request=req, response=resp)
@@ -205,7 +206,7 @@ class TestUpstreamErrors:
 
         from proxy.routes import chat as chat_module
 
-        async def raise_conn(request_body, *, client=None):
+        async def raise_conn(request_body, *, client=None, api_key=None, base_url=None):
             raise httpx.ConnectError("connection refused")
 
         monkeypatch.setattr(chat_module, "forward_to_llm", raise_conn)
@@ -222,7 +223,7 @@ class TestUpstreamErrors:
 
         from proxy.routes import chat as chat_module
 
-        async def raise_status(request_body, *, client=None):
+        async def raise_status(request_body, *, client=None, api_key=None, base_url=None):
             req = httpx.Request("POST", "https://upstream.test/v1/chat/completions")
             resp = httpx.Response(500, request=req)
             raise httpx.HTTPStatusError("boom", request=req, response=resp)
@@ -325,7 +326,7 @@ class TestCacheEntriesEndpoint:
         }
         for e in entries:
             assert set(e.keys()) == {
-                "entry_id", "prompt_text", "model_used",
+                "entry_id", "prompt_text", "model_used", "user_id",
                 "created_at", "expires_at", "hit_count", "last_hit_at",
             }
 
@@ -349,6 +350,183 @@ class TestCacheEntriesEndpoint:
         assert resp.json()["entries"] == []
 
 
+class TestProviderAllowlist:
+    """Phase 7.1 — caller-selected upstream is allowlist-enforced."""
+
+    @pytest.fixture
+    def upstream_spy(self, monkeypatch):
+        """Capture forward_to_llm kwargs while keeping mock responses."""
+        import httpx  # noqa: F401
+
+        from proxy.llm_client import _mock_response
+        from proxy.routes import chat as chat_module
+
+        captured = {}
+
+        async def spy(request_body, *, client=None, api_key=None, base_url=None):
+            captured["base_url"] = base_url
+            return _mock_response(request_body), 0.02
+
+        monkeypatch.setattr(chat_module, "forward_to_llm", spy)
+        return captured
+
+    @pytest.mark.asyncio
+    async def test_provider_name_maps_to_allowlisted_url(self, client, upstream_spy):
+        resp = await client.post(
+            "/v1/chat/completions",
+            json={**PROMPT_WATER, "provider": "openrouter"},
+        )
+        assert resp.status_code == 200
+        assert upstream_spy["base_url"] == "https://openrouter.ai/api/v1"
+
+    @pytest.mark.asyncio
+    async def test_exact_allowlisted_header_accepted(self, client, upstream_spy):
+        resp = await client.post(
+            "/v1/chat/completions",
+            json=PROMPT_WATER,
+            headers={"X-LLM-Base-URL": "https://generativelanguage.googleapis.com/v1beta/openai/"},
+        )
+        assert resp.status_code == 200
+        # Trailing slash normalized to canonical form.
+        assert upstream_spy["base_url"] == (
+            "https://generativelanguage.googleapis.com/v1beta/openai"
+        )
+
+    @pytest.mark.asyncio
+    async def test_non_allowlisted_url_rejected_400(self, client, upstream_spy):
+        resp = await client.post(
+            "/v1/chat/completions",
+            json=PROMPT_WATER,
+            headers={"X-LLM-Base-URL": "https://evil.example.com/v1"},
+        )
+        assert resp.status_code == 400
+        data = resp.json()
+        assert data["error"]["type"] == "invalid_request_error"
+        assert "allowlist" in data["error"]["message"]
+        # Rejection happens before any forwarding attempt.
+        assert "base_url" not in upstream_spy
+
+    @pytest.mark.asyncio
+    async def test_unknown_provider_name_rejected_400(self, client, upstream_spy):
+        resp = await client.post(
+            "/v1/chat/completions",
+            json={**PROMPT_WATER, "provider": "not-a-provider"},
+        )
+        assert resp.status_code == 400
+        assert "base_url" not in upstream_spy
+
+    @pytest.mark.asyncio
+    async def test_header_wins_over_provider_field(self, client, upstream_spy):
+        resp = await client.post(
+            "/v1/chat/completions",
+            json={**PROMPT_WATER, "provider": "openrouter"},
+            headers={"X-LLM-Base-URL": "gemini"},
+        )
+        assert resp.status_code == 200
+        assert upstream_spy["base_url"] == (
+            "https://generativelanguage.googleapis.com/v1beta/openai"
+        )
+
+    @pytest.mark.asyncio
+    async def test_omitted_selection_uses_configured_default(self, client, upstream_spy):
+        resp = await client.post("/v1/chat/completions", json=PROMPT_WATER)
+        assert resp.status_code == 200
+        assert upstream_spy["base_url"] is None
+
+
+class TestByokKeyForwarding:
+    """Phase 7.2 — caller keys go upstream; no key + real mode → 401."""
+
+    @pytest.fixture
+    def real_mode(self, monkeypatch):
+        monkeypatch.setenv("MOCK_LLM", "false")
+        from proxy.config import get_settings
+
+        get_settings.cache_clear()
+        yield
+        get_settings.cache_clear()
+
+    @pytest.fixture
+    def key_spy(self, monkeypatch):
+        """Capture forward_to_llm kwargs while keeping mock responses."""
+        from proxy.llm_client import _mock_response
+        from proxy.routes import chat as chat_module
+
+        captured = {}
+
+        async def spy(request_body, *, client=None, api_key=None, base_url=None):
+            captured["api_key"] = api_key
+            return _mock_response(request_body), 0.02
+
+        monkeypatch.setattr(chat_module, "forward_to_llm", spy)
+        return captured
+
+    def test_forward_to_llm_refuses_keyless_real_call(self, monkeypatch):
+        """Defense in depth: llm_client itself refuses to use the server key."""
+        import asyncio
+
+        import pytest as _pytest
+
+        from proxy.config import get_settings
+        from proxy.llm_client import forward_to_llm
+
+        monkeypatch.setenv("MOCK_LLM", "false")
+        get_settings.cache_clear()
+        try:
+            with _pytest.raises(ValueError, match="BYOK"):
+                asyncio.run(forward_to_llm({"model": "x", "messages": []}))
+        finally:
+            get_settings.cache_clear()
+
+    @pytest.mark.asyncio
+    async def test_no_key_in_real_mode_returns_401(self, client, real_mode):
+        resp = await client.post("/v1/chat/completions", json=PROMPT_WATER)
+        assert resp.status_code == 401
+        data = resp.json()
+        assert data["error"]["type"] == "invalid_request_error"
+        assert "bring-your-own-key" in data["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_malformed_auth_header_counts_as_missing(self, client, real_mode):
+        resp = await client.post(
+            "/v1/chat/completions",
+            json=PROMPT_WATER,
+            headers={"Authorization": "Token sk-something"},
+        )
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_bearer_prefix_without_token_counts_as_missing(self, client, real_mode):
+        resp = await client.post(
+            "/v1/chat/completions",
+            json=PROMPT_WATER,
+            headers={"Authorization": "Bearer   "},
+        )
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_caller_key_forwarded_upstream_not_server_key(self, client, key_spy):
+        from proxy.config import get_settings
+
+        resp = await client.post(
+            "/v1/chat/completions",
+            json=PROMPT_WATER,
+            headers={"Authorization": "Bearer sk-caller-abc123"},
+        )
+        assert resp.status_code == 200
+        # The exact caller key reaches the upstream call site…
+        assert key_spy["api_key"] == "sk-caller-abc123"
+        # …which is NOT the server's configured key.
+        assert key_spy["api_key"] != get_settings().llm_api_key
+
+    @pytest.mark.asyncio
+    async def test_mock_mode_still_works_without_any_key(self, client, key_spy):
+        """Existing local/CI contract: MOCK_LLM=true + no header = unchanged."""
+        resp = await client.post("/v1/chat/completions", json=PROMPT_WATER)
+        assert resp.status_code == 200
+        assert resp.json()["cache_metadata"]["outcome"] == "MISS"
+
+
 class TestSharedHttpClient:
     """Review fix #7 — one lifespan-managed upstream client, reused."""
 
@@ -365,7 +543,7 @@ class TestSharedHttpClient:
 
         received = {}
 
-        async def spy_forward(request_body, *, client=None):
+        async def spy_forward(request_body, *, client=None, api_key=None, base_url=None):
             received["client"] = client
             return _mock_response(request_body), 0.02
 
@@ -377,6 +555,62 @@ class TestSharedHttpClient:
         # Same client object handed to forward_to_llm on both requests.
         assert app.state.http_client is shared
         assert received["client"] is shared
+
+
+class TestMultiUserIsolation:
+    """Phase 7.3/7.7 — end-to-end proof that users never see each other's cache."""
+
+    ALICE: ClassVar[dict[str, str]] = {"Authorization": "Bearer sk-alice-test-key"}
+    BOB: ClassVar[dict[str, str]] = {"Authorization": "Bearer sk-bob-test-key"}
+
+    @pytest.mark.asyncio
+    async def test_identical_prompt_two_users_no_cross_hit(self, client):
+        r1 = await client.post("/v1/chat/completions", json=PROMPT_FRANCE, headers=self.ALICE)
+        assert r1.json()["cache_metadata"]["outcome"] == "MISS"
+
+        # Same exact prompt from Bob must MISS — Alice's entry is invisible.
+        r2 = await client.post("/v1/chat/completions", json=PROMPT_FRANCE, headers=self.BOB)
+        assert r2.json()["cache_metadata"]["outcome"] == "MISS"
+
+        # Both now HIT their OWN entries on repeat.
+        r3 = await client.post("/v1/chat/completions", json=PROMPT_FRANCE, headers=self.ALICE)
+        r4 = await client.post("/v1/chat/completions", json=PROMPT_FRANCE, headers=self.BOB)
+        assert r3.json()["cache_metadata"]["outcome"] == "HIT"
+        assert r4.json()["cache_metadata"]["outcome"] == "HIT"
+        assert r3.json()["choices"][0]["message"]["content"] == \
+            r1.json()["choices"][0]["message"]["content"]
+
+        # Two physically distinct entries for the same canonical prompt.
+        entries = (await client.get("/cache/entries")).json()["entries"]
+        france = [e for e in entries if "capital of France" in e["prompt_text"]]
+        assert len(france) == 2
+
+    @pytest.mark.asyncio
+    async def test_derived_user_ids_stable_and_distinct(self, client):
+        await client.post("/v1/chat/completions", json=PROMPT_WATER, headers=self.ALICE)
+        await client.post("/v1/chat/completions", json=PROMPT_WATER, headers=self.BOB)
+
+        from proxy.security import derive_user_id
+
+        entries = (await client.get("/cache/entries")).json()["entries"]
+        ids = {e["user_id"] for e in entries}
+        assert ids == {derive_user_id("sk-alice-test-key"), derive_user_id("sk-bob-test-key")}
+
+    @pytest.mark.asyncio
+    async def test_paraphrase_does_not_cross_users(self, client):
+        await client.post("/v1/chat/completions", json=PROMPT_FRANCE, headers=self.ALICE)
+        resp = await client.post(
+            "/v1/chat/completions",
+            json=PROMPT_FRANCE_PARAPHRASE,
+            headers=self.BOB,
+        )
+        assert resp.json()["cache_metadata"]["outcome"] == "MISS"
+
+    @pytest.mark.asyncio
+    async def test_keyless_mock_traffic_lands_on_local_user(self, client):
+        await client.post("/v1/chat/completions", json=PROMPT_WATER)
+        entries = (await client.get("/cache/entries")).json()["entries"]
+        assert all(e["user_id"] == "local" for e in entries)
 
 
 class TestAdminAuth:

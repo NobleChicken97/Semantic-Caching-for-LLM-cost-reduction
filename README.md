@@ -193,6 +193,8 @@ All settings are environment variables (see [.env.example](.env.example)):
 | `CACHE_TTL_SECONDS` | `3600` | Cache entry time-to-live |
 | `SIMILARITY_THRESHOLD` | `0.85` | Cosine floor for semantic hits |
 | `ADMIN_TOKEN` | *(empty)* | Bearer token guarding `/cache/purge`, `/eval/threshold-sweep`, `/dashboard`. Empty = unauthenticated (demo mode only) — **set this in any real deployment** |
+| `USER_ID_PEPPER` | *(empty)* | HMAC key for deriving user_ids from caller keys. **Required before BYOK traffic**; generate once, never rotate (rotating orphans all users' cache history) |
+| `MODEL_PRICING` | *(empty)* | Pricing overrides/additions, USD per 1M in/out tokens — `name=in,out;...`. Unknown models estimate at $0.00 |
 | `MAX_SEMANTIC_SCAN_ENTRIES` | `5000` | Warn once per process when the semantic scan exceeds this many entries (see Known limitations) |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8000` | Bind port |
@@ -201,6 +203,39 @@ All settings are environment variables (see [.env.example](.env.example)):
 > `{"error": {"message", "type", "code"}}` with the upstream status passed through
 > (`502` for connection failures). Failed calls are logged with outcome `"ERROR"`
 > and zeroed cost/token counts, and never enter the cache.
+
+---
+
+## Bring your own key (BYOK, Phase 7)
+
+Multiple people can point their own free-tier keys through one proxy without
+anyone spending anyone else's money or seeing anyone else's cached answers.
+
+**How callers authenticate** — send your provider key on every request:
+
+```bash
+curl -X POST https://your-proxy/v1/chat/completions \
+     -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "meta-llama/llama-3.2-3b-instruct:free",
+          "provider": "openrouter",
+          "messages": [{"role": "user", "content": "What is the capital of France?"}]}'
+```
+
+- **Provider selection:** pass `provider` (`"openrouter"` or `"gemini"`) *or* an exact allowlisted base URL via the `X-LLM-Base-URL` header (header wins). Anything not on the allowlist is rejected with a 400 before any network call — the proxy is never an open relay.
+- **Isolation:** your key is HMAC-hashed (server-side pepper) into a stable `user_id`; both cache tiers and all metrics filter on it. Two users asking the same question get **separate cache entries** — verified by tests.
+- **Keyless requests** are served only while `MOCK_LLM=true` (local/CI demo mode). With `MOCK_LLM=false`, a missing key returns **401** — the server never substitutes its own key.
+- **Rotating your key starts your cache history fresh** (new key → new derived user_id). Expected behavior, not a bug.
+- **Metrics:** `/metrics` and the dashboard lead with **total tokens saved** (hits only) plus a per-user breakdown; cost stays as a secondary, model-aware estimate that reports `$0.00` for unrecognized/free models.
+
+### Pre-launch verification runbook (real providers)
+
+1. Set `MOCK_LLM=false`, a generated `USER_ID_PEPPER`, and `ADMIN_TOKEN` in the environment.
+2. Have two testers use different providers (one OpenRouter free model, one Gemini flash via its OpenAI-compatible endpoint).
+3. Both send the same prompt → confirm each gets `MISS` then `HIT` against **their own** entry (`/cache/entries` shows two rows, distinct `user_id`s).
+4. One tester sends an expired/invalid key → clean upstream-shaped 401 from the provider; other users' traffic unaffected.
+5. Send a request with `X-LLM-Base-URL: https://attacker.example` → expect 400.
+6. Watch `/dashboard`: per-user token savings tick up independently.
 
 ---
 

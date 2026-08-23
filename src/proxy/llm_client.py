@@ -15,8 +15,19 @@ async def forward_to_llm(
     request_body: dict[str, Any],
     *,
     client: httpx.AsyncClient | None = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
 ) -> tuple[dict[str, Any], float]:
     """Forward a chat completion request to the configured LLM backend.
+
+    BYOK (Phase 7): ``api_key`` is the CALLER's own key, used for the
+    upstream Authorization header. When None the server's configured key is
+    used — but chat.py refuses real (non-mock) traffic without a caller key
+    before ever reaching here, so this fallback only serves mock/local flows.
+
+    ``base_url`` — a pre-validated allowlisted upstream base URL chosen by
+    the caller (see config.resolve_base_url); when None the configured
+    LLM_API_BASE_URL is used.
 
     ``client`` — an existing AsyncClient to reuse. The FastAPI app passes
     its lifespan-managed shared client here (one connection pool for all
@@ -30,11 +41,17 @@ async def forward_to_llm(
     if cfg.mock_llm:
         return _mock_response(request_body), 0.02
 
+    if not api_key:
+        raise ValueError(
+            "no API key supplied: BYOK mode requires the caller's "
+            "Authorization: Bearer <key> for real upstream calls"
+        )
+
     headers = {
-        "Authorization": f"Bearer {cfg.llm_api_key}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    url = f"{cfg.llm_api_base_url}/chat/completions"
+    url = f"{(base_url or cfg.llm_api_base_url).rstrip('/')}/chat/completions"
 
     start = time.perf_counter()
     if client is not None:

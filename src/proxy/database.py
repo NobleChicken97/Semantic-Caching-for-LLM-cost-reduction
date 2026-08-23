@@ -19,56 +19,158 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+# Final schema (Phase 7 / schema v2): every cache entry and log row is scoped
+# to a derived user_id. prompt_hash is intentionally NOT inline-UNIQUE any
+# more — two users may cache the identical prompt, so uniqueness is the
+# composite (prompt_hash, user_id) index below.
+_SCHEMA_V2 = """
+    CREATE TABLE IF NOT EXISTS cache_entries (
+        entry_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        prompt_text     TEXT    NOT NULL,
+        prompt_hash     TEXT    NOT NULL,  -- SHA-256 of canonical prompt
+        prompt_embedding BLOB,
+        response_json   TEXT    NOT NULL,  -- full OpenAI-shaped response JSON
+        model_used      TEXT    NOT NULL,
+        user_id         TEXT    NOT NULL DEFAULT 'local',
+        created_at      REAL    NOT NULL,
+        expires_at      REAL    NOT NULL,
+        hit_count       INTEGER NOT NULL DEFAULT 0,
+        last_hit_at     REAL
+    );
+
+    -- 'ERROR' marks failed upstream calls (no fabricated cost/tokens).
+    -- NOTE: CREATE TABLE IF NOT EXISTS means pre-existing databases keep the
+    -- old constraint until recreated; see _migrate_user_scoping.
+    CREATE TABLE IF NOT EXISTS request_log (
+        log_id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp         REAL    NOT NULL,
+        prompt_text       TEXT    NOT NULL,
+        prompt_hash       TEXT    NOT NULL,
+        outcome           TEXT    NOT NULL CHECK(outcome IN ('HIT','MISS','BYPASS','ERROR')),
+        matched_entry_id  INTEGER,
+        similarity_score  REAL,
+        latency_ms        REAL    NOT NULL,
+        estimated_cost_usd REAL   NOT NULL DEFAULT 0.0,
+        tokens_in         INTEGER NOT NULL DEFAULT 0,
+        tokens_out        INTEGER NOT NULL DEFAULT 0,
+        user_id           TEXT    NOT NULL DEFAULT 'local',
+        FOREIGN KEY (matched_entry_id)
+            REFERENCES cache_entries(entry_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS labeled_test_pairs (
+        pair_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+        prompt_a    TEXT    NOT NULL,
+        prompt_b    TEXT    NOT NULL,
+        should_match INTEGER NOT NULL CHECK(should_match IN (0, 1))
+    );
+
+    -- Phase 7.6: permanent daily rollup. Raw request_log rows are pruned
+    -- after LOG_RETENTION_DAYS, but their aggregates live here forever so
+    -- lifetime totals never regress.
+    CREATE TABLE IF NOT EXISTS daily_metrics (
+        date           TEXT    PRIMARY KEY,  -- UTC date, e.g. 2026-08-23
+        total_requests INTEGER NOT NULL DEFAULT 0,
+        hits           INTEGER NOT NULL DEFAULT 0,
+        tokens_saved   INTEGER NOT NULL DEFAULT 0,
+        cost_saved_usd REAL    NOT NULL DEFAULT 0.0
+    );
+"""
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return [row[1] for row in rows]
+
+
+def _migrate_user_scoping(conn: sqlite3.Connection) -> None:
+    """Bring pre-Phase-7 databases up to schema v2 (idempotent).
+
+    Two situations handled:
+      * Brand-new DBs: _SCHEMA_V2 already created v2 tables -> no-op.
+      * Legacy DBs: tables exist WITHOUT user_id (and cache_entries carries an
+        inline UNIQUE(prompt_hash)). SQLite cannot ALTER constraints, so
+        cache_entries is rebuilt row-by-row with every historical row assigned
+        to the 'local' user (pre-BYOK deployments were single-user).
+        request_log only needs a column add (no constraint change).
+    """
+    fk_was_on = bool(conn.execute("PRAGMA foreign_keys").fetchone()[0])
+    # Rebuilding a parent table fails under FK enforcement when child rows
+    # reference it; migration re-checks integrity by copying rows explicitly.
+    conn.execute("PRAGMA foreign_keys=OFF")
+
+    try:
+        if "cache_entries" in _existing_tables(conn) and (
+            "user_id" not in _table_columns(conn, "cache_entries")
+        ):
+            conn.executescript(
+                """
+                CREATE TABLE cache_entries_v2 (
+                    entry_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                    prompt_text     TEXT    NOT NULL,
+                    prompt_hash     TEXT    NOT NULL,
+                    prompt_embedding BLOB,
+                    response_json   TEXT    NOT NULL,
+                    model_used      TEXT    NOT NULL,
+                    user_id         TEXT    NOT NULL DEFAULT 'local',
+                    created_at      REAL    NOT NULL,
+                    expires_at      REAL    NOT NULL,
+                    hit_count       INTEGER NOT NULL DEFAULT 0,
+                    last_hit_at     REAL
+                );
+                INSERT INTO cache_entries_v2
+                    (prompt_text, prompt_hash, prompt_embedding, response_json,
+                     model_used, user_id, created_at, expires_at, hit_count, last_hit_at)
+                SELECT prompt_text, prompt_hash, prompt_embedding, response_json,
+                       model_used, 'local', created_at, expires_at, hit_count, last_hit_at
+                  FROM cache_entries;
+                DROP TABLE cache_entries;
+                ALTER TABLE cache_entries_v2 RENAME TO cache_entries;
+                """
+            )
+
+        if "request_log" in _existing_tables(conn) and (
+            "user_id" not in _table_columns(conn, "request_log")
+        ):
+            conn.execute(
+                "ALTER TABLE request_log "
+                "ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local'"
+            )
+    finally:
+        if fk_was_on:
+            conn.execute("PRAGMA foreign_keys=ON")
+
+
+def _existing_tables(conn: sqlite3.Connection) -> set[str]:
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
 def init_db() -> None:
-    """Create tables if they don't already exist (idempotent)."""
+    """Create/migrate tables as needed (idempotent)."""
     conn = get_connection()
     try:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS cache_entries (
-                entry_id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                prompt_text     TEXT    NOT NULL,
-                prompt_hash     TEXT    NOT NULL UNIQUE,  -- SHA-256 of canonical prompt
-                prompt_embedding BLOB,                    -- NULL in Phase 1
-                response_json   TEXT    NOT NULL,          -- full OpenAI-shaped response JSON
-                model_used      TEXT    NOT NULL,
-                created_at      REAL    NOT NULL,
-                expires_at      REAL    NOT NULL,
-                hit_count       INTEGER NOT NULL DEFAULT 0,
-                last_hit_at     REAL
-            );
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.executescript(_SCHEMA_V2)
+        _migrate_user_scoping(conn)
 
-            CREATE INDEX IF NOT EXISTS idx_cache_hash
-                ON cache_entries(prompt_hash);
-
-            CREATE TABLE IF NOT EXISTS request_log (
-                log_id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp         REAL    NOT NULL,
-                prompt_text       TEXT    NOT NULL,
-                prompt_hash       TEXT    NOT NULL,
-                -- 'ERROR' marks failed upstream calls (no fabricated cost/tokens).
-                -- NOTE: CREATE TABLE IF NOT EXISTS means pre-existing databases
-                -- keep the old 3-outcome constraint until recreated.
-                outcome           TEXT    NOT NULL CHECK(outcome IN ('HIT','MISS','BYPASS','ERROR')),
-                matched_entry_id  INTEGER,
-                similarity_score  REAL,
-                latency_ms        REAL    NOT NULL,
-                estimated_cost_usd REAL   NOT NULL DEFAULT 0.0,
-                tokens_in         INTEGER NOT NULL DEFAULT 0,
-                tokens_out        INTEGER NOT NULL DEFAULT 0,
-                FOREIGN KEY (matched_entry_id)
-                    REFERENCES cache_entries(entry_id)
-            );
-
+        # Composite uniqueness: same hash is fine across users, never twice
+        # for one user. Also serves plain prompt_hash lookups (prefix rule).
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_cache_hash_user
+                ON cache_entries(prompt_hash, user_id)
+            """
+        )
+        conn.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_log_timestamp
-                ON request_log(timestamp);
-
-            CREATE TABLE IF NOT EXISTS labeled_test_pairs (
-                pair_id     INTEGER PRIMARY KEY AUTOINCREMENT,
-                prompt_a    TEXT    NOT NULL,
-                prompt_b    TEXT    NOT NULL,
-                should_match INTEGER NOT NULL CHECK(should_match IN (0, 1))
-            );
-        """)
+                ON request_log(timestamp)
+            """
+        )
+        conn.commit()
     finally:
         conn.close()
 

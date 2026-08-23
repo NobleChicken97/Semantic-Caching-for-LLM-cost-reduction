@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import sqlite3
 import time
 from typing import Any
 
@@ -50,6 +51,7 @@ def lookup(
     *,
     threshold: float | None = None,
     model: str | None = None,
+    user_id: str = "local",
 ) -> dict[str, Any] | None:
     """Two-tier lookup: exact hash FIRST, then semantic nearest-neighbor.
 
@@ -57,6 +59,9 @@ def lookup(
     identical prompts served by different models are distinct cache keys.
     When ``model`` is None the lookup matches any stored model (used by
     direct callers/tests; the HTTP route always passes a model).
+
+    ``user_id`` scopes the search to one caller's entries — responses are
+    NEVER shared across users (Phase 7 BYOK requirement).
 
     Returns ``{"entry_id", "response", "similarity_score"}`` on a hit,
     or ``None`` on a miss.
@@ -66,18 +71,19 @@ def lookup(
     )
 
     # --- Tier 1: exact string match ---
-    exact = _exact_lookup(prompt_text, model=model)
+    exact = _exact_lookup(prompt_text, model=model, user_id=user_id)
     if exact is not None:
         exact["similarity_score"] = 1.0
         return exact
 
     # --- Tier 2: semantic search ---
-    return _semantic_lookup(prompt_text, threshold, model=model)
+    return _semantic_lookup(prompt_text, threshold, model=model, user_id=user_id)
 
 
 def _exact_lookup(
     prompt_text: str,
     model: str | None = None,
+    user_id: str = "local",
 ) -> dict[str, Any] | None:
     """Return the cached response for an exact hash + same-model match, or None."""
     prompt_hash = _hash_prompt(prompt_text)
@@ -87,8 +93,9 @@ def _exact_lookup(
             SELECT entry_id, response_json, expires_at
               FROM cache_entries
              WHERE prompt_hash = ?
+               AND user_id = ?
         """
-        params: list[Any] = [prompt_hash]
+        params: list[Any] = [prompt_hash, user_id]
         if model is not None:
             sql += "           AND model_used = ?"
             params.append(model)
@@ -122,6 +129,7 @@ def _semantic_lookup(
     prompt_text: str,
     threshold: float,
     model: str | None = None,
+    user_id: str = "local",
 ) -> dict[str, Any] | None:
     """Embed the prompt and find the nearest cached entry by cosine similarity.
 
@@ -131,7 +139,8 @@ def _semantic_lookup(
 
     Returns the cached response only if similarity >= threshold, restricted
     to entries stored for ``model`` when a model is given (a gpt-4 request
-    must never semantically hit an answer generated for gpt-3.5-turbo).
+    must never semantically hit an answer generated for gpt-3.5-turbo) and to
+    the caller's own ``user_id`` — semantic hits never cross users.
     """
     global _scan_limit_warned
 
@@ -148,8 +157,9 @@ def _semantic_lookup(
               FROM cache_entries
              WHERE prompt_embedding IS NOT NULL
                AND expires_at > ?
+               AND user_id = ?
         """
-        params: list[Any] = [now]
+        params: list[Any] = [now, user_id]
         if model is not None:
             sql += "           AND model_used = ?"
             params.append(model)
@@ -209,8 +219,14 @@ def store(
     prompt_text: str,
     response_dict: dict[str, Any],
     model_used: str,
+    user_id: str = "local",
 ) -> int:
-    """Store a new cache entry with its embedding. Returns the new entry_id."""
+    """Store a new cache entry with its embedding. Returns the new entry_id.
+
+    Scoped to ``user_id``: the same prompt may exist for many users (the
+    composite UNIQUE(prompt_hash, user_id) index enforces one-per-user), and
+    a re-store replaces only that user's entry.
+    """
     from .embedding import embed_texts
 
     prompt_hash = _hash_prompt(prompt_text)
@@ -220,17 +236,18 @@ def store(
 
     conn = get_connection()
     try:
-        # Replace any existing entry for this exact prompt hash
+        # Replace this user's existing entry for this exact prompt hash
         conn.execute(
-            "DELETE FROM cache_entries WHERE prompt_hash = ?", (prompt_hash,)
+            "DELETE FROM cache_entries WHERE prompt_hash = ? AND user_id = ?",
+            (prompt_hash, user_id),
         )
 
         cursor = conn.execute(
             """
             INSERT INTO cache_entries
                 (prompt_text, prompt_hash, prompt_embedding, response_json,
-                 model_used, created_at, expires_at, hit_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                 model_used, user_id, created_at, expires_at, hit_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
             """,
             (
                 prompt_text,
@@ -238,6 +255,7 @@ def store(
                 _serialize_embedding(embedding),
                 json.dumps(response_dict, ensure_ascii=False),
                 model_used,
+                user_id,
                 now,
                 expires_at,
             ),
@@ -298,8 +316,12 @@ def log_request(
     estimated_cost_usd: float = 0.0,
     tokens_in: int = 0,
     tokens_out: int = 0,
+    user_id: str = "local",
 ) -> None:
-    """Write a row into the request_log table."""
+    """Write a row into the request_log table.
+
+    Stores the derived ``user_id`` — never the raw caller key.
+    """
     prompt_hash = _hash_prompt(prompt_text)
     conn = get_connection()
     try:
@@ -308,8 +330,8 @@ def log_request(
             INSERT INTO request_log
                 (timestamp, prompt_text, prompt_hash, outcome,
                  matched_entry_id, similarity_score, latency_ms,
-                 estimated_cost_usd, tokens_in, tokens_out)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 estimated_cost_usd, tokens_in, tokens_out, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 time.time(),
@@ -322,6 +344,7 @@ def log_request(
                 estimated_cost_usd,
                 tokens_in,
                 tokens_out,
+                user_id,
             ),
         )
         conn.commit()
@@ -329,18 +352,86 @@ def log_request(
         conn.close()
 
 
-def get_metrics() -> dict[str, Any]:
-    """Aggregate metrics from the request_log."""
+def prune_old_logs(days: int = 30, *, now: float | None = None) -> int:
+    """Roll request_log rows older than ``days`` into daily_metrics, then delete.
+
+    Phase 7.6 hot/cold retention: raw rows are operational data with a
+    30-day window; their aggregates move into the permanent daily_metrics
+    table so lifetime totals never regress. Runs in a single transaction —
+    re-running is a no-op once rows are gone. Returns the number of raw
+    rows pruned.
+    """
+    cutoff = (now if now is not None else time.time()) - days * 86_400
     conn = get_connection()
     try:
-        total = conn.execute("SELECT COUNT(*) FROM request_log").fetchone()[0]
-        hits = conn.execute(
+        conn.execute(
+            """
+            INSERT INTO daily_metrics
+                (date, total_requests, hits, tokens_saved, cost_saved_usd)
+            SELECT date(timestamp, 'unixepoch'),
+                   COUNT(*),
+                   SUM(CASE WHEN outcome = 'HIT' THEN 1 ELSE 0 END),
+                   COALESCE(SUM(CASE WHEN outcome = 'HIT'
+                                     THEN tokens_in + tokens_out ELSE 0 END), 0),
+                   ROUND(COALESCE(SUM(CASE WHEN outcome = 'HIT'
+                                      THEN estimated_cost_usd ELSE 0 END), 0), 6)
+              FROM request_log
+             WHERE timestamp < ?
+             GROUP BY date(timestamp, 'unixepoch')
+             ON CONFLICT(date) DO UPDATE SET
+                total_requests = total_requests + excluded.total_requests,
+                hits           = hits           + excluded.hits,
+                tokens_saved   = tokens_saved   + excluded.tokens_saved,
+                cost_saved_usd = cost_saved_usd + excluded.cost_saved_usd
+            """,
+            (cutoff,),
+        )
+        deleted = conn.execute(
+            "DELETE FROM request_log WHERE timestamp < ?", (cutoff,)
+        )
+        conn.commit()
+        return deleted.rowcount
+    finally:
+        conn.close()
+
+
+def _rollup_totals(conn: sqlite3.Connection) -> tuple[int, int, int, float]:
+    """Lifetime aggregates from the permanent daily_metrics table."""
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(total_requests), 0),
+               COALESCE(SUM(hits), 0),
+               COALESCE(SUM(tokens_saved), 0),
+               COALESCE(SUM(cost_saved_usd), 0)
+          FROM daily_metrics
+        """
+    ).fetchone()
+    return int(row[0]), int(row[1]), int(row[2]), float(row[3])
+
+
+def get_metrics() -> dict[str, Any]:
+    """Aggregate metrics from request_log (+ daily_metrics rollup).
+
+    Lifetime totals (requests, hits, hit_rate, cost saved, tokens saved)
+    union the permanent rollup with remaining raw rows so numbers stay
+    correct across the 30-day pruning boundary. Latency averages and the
+    per-user breakdown reflect the raw window only — the rollup is global
+    by design.
+    """
+    conn = get_connection()
+    try:
+        r_total, r_hits, r_tokens, r_cost = _rollup_totals(conn)
+
+        total = r_total + conn.execute(
+            "SELECT COUNT(*) FROM request_log"
+        ).fetchone()[0]
+        hits = r_hits + conn.execute(
             "SELECT COUNT(*) FROM request_log WHERE outcome = 'HIT'"
         ).fetchone()[0]
 
         hit_rate = hits / total if total > 0 else 0.0
 
-        cost_saved = conn.execute(
+        cost_saved = r_cost + conn.execute(
             """
             SELECT COALESCE(SUM(estimated_cost_usd), 0)
               FROM request_log
@@ -364,12 +455,42 @@ def get_metrics() -> dict[str, Any]:
             """
         ).fetchone()[0]
 
+        # Phase 7: tokens-saved is the headline metric for BYOK free-tier
+        # users — only HIT rows represent generation we didn't pay for again.
+        tokens_saved = r_tokens + conn.execute(
+            """
+            SELECT COALESCE(SUM(tokens_in + tokens_out), 0)
+              FROM request_log
+             WHERE outcome = 'HIT'
+            """
+        ).fetchone()[0]
+
+        per_user_rows = conn.execute(
+            """
+            SELECT user_id,
+                   COUNT(*)                                            AS total_requests,
+                   SUM(CASE WHEN outcome = 'HIT' THEN 1 ELSE 0 END)     AS hits,
+                   COALESCE(SUM(CASE WHEN outcome = 'HIT'
+                                     THEN tokens_in + tokens_out ELSE 0 END), 0)
+                                                                       AS tokens_saved,
+                   ROUND(COALESCE(SUM(CASE WHEN outcome = 'HIT'
+                                      THEN estimated_cost_usd ELSE 0 END), 0), 6)
+                                                                       AS cost_saved_usd
+              FROM request_log
+          GROUP BY user_id
+          ORDER BY tokens_saved DESC
+            """
+        ).fetchall()
+        per_user = [dict(row) for row in per_user_rows]
+
         return {
             "hit_rate": round(hit_rate, 4),
             "total_requests": total,
             "estimated_cost_saved_usd": round(cost_saved, 6),
             "avg_latency_hit_ms": round(hit_lat, 2),
             "avg_latency_miss_ms": round(miss_lat, 2),
+            "total_tokens_saved": int(tokens_saved),
+            "per_user": per_user,
         }
     finally:
         conn.close()
@@ -383,8 +504,8 @@ def list_cache_entries(search: str | None = None) -> list[dict[str, Any]]:
     conn = get_connection()
     try:
         base = """
-            SELECT entry_id, prompt_text, model_used, created_at, expires_at,
-                   hit_count, last_hit_at
+            SELECT entry_id, prompt_text, model_used, user_id,
+                   created_at, expires_at, hit_count, last_hit_at
               FROM cache_entries
         """
         if search:
@@ -408,7 +529,7 @@ def recent_logs(limit: int = 50) -> list[dict[str, Any]]:
             """
             SELECT log_id, timestamp, prompt_text, outcome, matched_entry_id,
                    similarity_score, latency_ms, estimated_cost_usd,
-                   tokens_in, tokens_out
+                   tokens_in, tokens_out, user_id
               FROM request_log
           ORDER BY timestamp DESC
              LIMIT ?
