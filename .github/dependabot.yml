@@ -11,9 +11,17 @@ updates:
         patterns:
           - "*"
 
+  # Version-bump PRs are intentionally OFF for pip: the requirements files use
+  # ">=" floors, so pip already installs the newest satisfying versions on
+  # every install — floor-bump PRs would be cosmetic churn. Vulnerability
+  # coverage does NOT depend on these PRs:
+  #   * Dependabot SECURITY updates (CVE-driven PRs) are a separate GitHub
+  #     feature and keep working — see repo Settings > Code security >
+  #     "Dependabot security updates" (leave it enabled).
+  #   * The CI `security-audit` job runs pip-audit on every push/PR and files
+  #     any findings as persistent code-scanning alerts in the Security tab.
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
-    commit-message:
-      prefix: "deps"
+    open-pull-requests-limit: 0

@@ -215,4 +215,10 @@ Design decisions:
 - Smoke suite asserts exact metrics accounting (+5 requests), OpenAI response contract keys, similarity floors kept loose (0.80) so upstream BGE weight updates don't flake CI (unit suite gates 0.85).
 - ruff format --check deliberately NOT gated: 16 files would need reformatting (tracked as follow-up).
 
+Follow-up tweak (same day, user-approved): Dependabot pip version-bump PRs disabled via
+open-pull-requests-limit: 0 (floors are cosmetic under >= pinning); vulnerability coverage
+strengthened instead of removed — security-audit job now publishes pip-audit SARIF to code
+scanning (Security tab alerts persist until resolved), and Dependabot's separate CVE-driven
+security-update PRs remain active. github-actions ecosystem stays on weekly grouped updates.
+
 Docs consistency pass (same day): README API reference now documents ADMIN_TOKEN gating on purge/sweep/dashboard; stale "~2.2 GB" / "45 tests" / "51 tests" claims corrected across report.md, todos.md and guide.md.

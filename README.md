@@ -236,7 +236,7 @@ Caveats worth knowing:
 | **Lint** | `ruff` clean across `src/`, `tests/`, `scripts/` |
 | **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 68-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
 | **Docker smoke** | Builds the production image with GHA layer caching, asserts `torch.cuda.is_available()` is False inside it, then runs the same black-box smoke suite against the containerized server |
-| **Security audit** (non-blocking) | `pip-audit` over `requirements.txt`; surfaced as informational because transitive CVEs in the torch/fastapi ecosystem shouldn't gate routine PRs |
+| **Security audit** (non-blocking) | `pip-audit` over `requirements.txt` on every push/PR; findings are published as persistent code-scanning alerts in the **Security tab** (nothing is suppressed or ignored), while transitive-CVE noise from the torch/fastapi ecosystem doesn't gate routine PRs. Dependabot version-bump PRs for pip are off (the `>=` floors make them cosmetic); CVE-driven Dependabot security PRs remain active independently |
 
 Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the BGE-small model (~90 MB) is cached per-OS between runs; CPU-only torch is installed *before* project deps so Linux runners never pull multi-GB CUDA wheels (same pin as the Dockerfile). Dependabot keeps actions and pip deps fresh weekly.
 
