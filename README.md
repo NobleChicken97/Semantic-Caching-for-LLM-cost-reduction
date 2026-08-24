@@ -70,7 +70,7 @@ Precision/recall across thresholds against a 31-pair labeled dataset (full analy
 | Embeddings | sentence-transformers · `BAAI/bge-small-en-v1.5` (CPU) |
 | Vector math | numpy (dot-product cosine on unit vectors) |
 | Storage | SQLite (WAL mode, foreign keys ON) |
-| Testing | pytest + pytest-asyncio (68 tests) |
+| Testing | pytest + pytest-asyncio (105 tests) |
 
 ---
 
@@ -95,9 +95,15 @@ curl -X POST http://127.0.0.1:8000/v1/chat/completions ^
 # 4. Check the savings:
 curl http://127.0.0.1:8000/metrics
 
-# Run the test suite:            make test
+# Run the test suite:            make test          (or: python -m pytest tests/ -q)
 # Reproduce the sweep:           python scripts/run_sweep.py
 ```
+
+> **Windows notes:** `make` isn't available — run the underlying commands directly
+> (`python -m uvicorn src.proxy.main:app --reload`, `python -m pytest tests/ -q`).
+> And on PowerShell 5.x, don't send JSON through `curl.exe` (PS strips inner quotes
+> → 422). Use `Invoke-RestMethod` — a ready-made `Ask` helper lives in
+> [`docs/LAUNCH_CHECKLIST.md`](docs/LAUNCH_CHECKLIST.md).
 
 To proxy a real LLM, set `MOCK_LLM=false` plus `LLM_API_KEY` / `LLM_API_BASE_URL`. Clients keep their existing OpenAI code and only change the base URL.
 
@@ -269,7 +275,7 @@ Caveats worth knowing:
 | Job | What it proves |
 |-----|----------------|
 | **Lint** | `ruff` clean across `src/`, `tests/`, `scripts/` |
-| **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 68-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
+| **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 100-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
 | **Docker smoke** | Builds the production image with GHA layer caching, asserts `torch.cuda.is_available()` is False inside it, then runs the same black-box smoke suite against the containerized server |
 | **Security audit** (non-blocking) | `pip-audit` over `requirements.txt` on every push/PR; findings are published as persistent code-scanning alerts in the **Security tab** (nothing is suppressed or ignored), while transitive-CVE noise from the torch/fastapi ecosystem doesn't gate routine PRs. Dependabot version-bump PRs for pip are off (the `>=` floors make them cosmetic); CVE-driven Dependabot security PRs remain active independently |
 
@@ -286,7 +292,7 @@ Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the 
 │   ├── eval.py          Threshold sweep: batch embed → classify → P/R/F1
 │   ├── database.py      SQLite schema + 31 labeled test pairs
 │   └── ...
-├── tests/               68 tests (unit + integration)
+├── tests/               100 tests (unit + integration)
 ├── scripts/             Sweep runner, pair checker, JSON exporter, CI smoke suite
 │   ├── .github/         CI workflow (lint / test matrix / docker smoke / audit) + Dependabot
 ├── data/labeled_test_pairs.json   Reproducible validation dataset
@@ -302,6 +308,7 @@ Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the 
 - [x] Phase 4 — TTL expiry + manual purge + bypass header
 - [x] Phase 5 — metrics + dashboard (`/dashboard` — FastAPI + Chart.js, single service)
 - [x] Phase 6 — deployment artifacts (`Dockerfile` + `render.yaml` + `Procfile`, Docker-verified locally) · live cloud deploy: see [Deployment](#deployment-phase-6)
+- [x] Phase 7 — BYOK multi-user: provider allowlist (openrouter/gemini), HMAC-derived user isolation, per-user cache scoping, tokens-saved headline metric, 30-day log retention with permanent rollup
 - [ ] Stretch — wire in front of a downstream project; report before/after costs
 
 ## Dashboard

@@ -1,5 +1,11 @@
 # 📝 Project Report — Semantic Caching Layer for LLM Cost Reduction
 
+> ⚠️ **ARCHIVED SNAPSHOT (2026-08-21).** This document is a point-in-time
+> analysis and is **superseded by [`progress.md`](progress.md)**, which tracks
+> the project through Phase 7 (BYOK, 100+ tests) and is kept up to date.
+> Claims below — test counts, folder layout, completion %, "not yet
+> implemented" notes — reflect the repo as of 2026-08-21 and are known stale.
+
 > **Date:** 2026-08-21  
 > **Author:** Auto-generated from codebase analysis  
 > **Project status:** In Progress (~45–50% of v1 complete)

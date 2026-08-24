@@ -300,6 +300,100 @@ class TestTtlExpiry:
         assert result is None
 
 
+class TestEmbeddingDeserialization:
+    """Corrupt/odd stored embeddings must degrade gracefully, never 500."""
+
+    def test_truncated_blob_raises_value_error(self):
+        import numpy as np
+
+        from proxy.cache import _deserialize_embedding
+
+        # A blob holding only 10 floats (e.g. partial write): frombuffer
+        # silently returns the short array, so the length check must be
+        # what catches it.
+        short = np.zeros(10, dtype=np.float32).tobytes()
+        with pytest.raises(ValueError):
+            _deserialize_embedding(short)
+
+    def test_zero_blob_raises_value_error(self):
+        import numpy as np
+
+        from proxy.cache import _deserialize_embedding
+
+        zeros = np.zeros(384, dtype=np.float32).tobytes()
+        with pytest.raises(ValueError):
+            _deserialize_embedding(zeros)
+
+    def test_unnormalized_blob_renormalized_to_unit_length(self):
+        import numpy as np
+
+        from proxy.cache import _deserialize_embedding
+
+        rng = np.random.default_rng(42)
+        raw = (rng.standard_normal(384) * 7.0).astype(np.float32)  # far from unit
+        vec = _deserialize_embedding(raw.tobytes())
+        assert vec.shape == (384,)
+        assert abs(float(np.linalg.norm(vec)) - 1.0) < 1e-5
+
+    def test_scan_skips_corrupt_row_without_raising(self):
+        """A truncated blob in the table must not blow up the semantic scan."""
+        from proxy.database import get_connection
+
+        eid = store("What is the boiling point of water?", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT prompt_embedding FROM cache_entries WHERE entry_id = ?", (eid,)
+            ).fetchone()
+            truncated = bytes(row["prompt_embedding"])[: 100 * 4]  # 100 floats
+            conn.execute(
+                "UPDATE cache_entries SET prompt_embedding = ? WHERE entry_id = ?",
+                (truncated, eid),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Paraphrase probe -> exact tier misses, semantic tier hits the
+        # corrupt row and must SKIP it (returning a clean miss, not raising).
+        assert lookup("Tell me the boiling point of water.") is None
+
+    def test_scaled_stored_vector_scores_same_after_renorm(self):
+        """A stored vector drifted off unit length must still hit correctly."""
+        import numpy as np
+
+        from proxy.cache import lookup as _lookup
+        from proxy.database import get_connection
+
+        store("What is the boiling point of water?", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+        probe = "Tell me the boiling point of water."
+
+        baseline = _lookup(probe)
+        assert baseline is not None
+        base_score = baseline["similarity_score"]
+
+        # Corrupt the stored vector to 5x its original magnitude.
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT prompt_embedding FROM cache_entries WHERE entry_id = ?",
+                (baseline["entry_id"],),
+            ).fetchone()
+            blown_up = (np.frombuffer(row["prompt_embedding"], dtype=np.float32) * 5.0).tobytes()
+            conn.execute(
+                "UPDATE cache_entries SET prompt_embedding = ? WHERE entry_id = ?",
+                (blown_up, baseline["entry_id"]),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        rescaled = _lookup(probe)
+        assert rescaled is not None
+        assert abs(rescaled["similarity_score"] - base_score) < 1e-3
+
+
 class TestUserScoping:
     """Phase 7.3 — cache entries never cross users."""
 

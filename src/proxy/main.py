@@ -118,7 +118,7 @@ app.include_router(chat_router)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "phase": 2}
+    return {"status": "ok", "phase": 7}
 
 
 @app.get("/metrics", response_model=MetricsResponse)

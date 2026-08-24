@@ -78,7 +78,7 @@ class TestHealth:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["phase"] == 2
+        assert data["phase"] == 7
 
 
 class TestChatCompletions:

@@ -37,8 +37,32 @@ def _serialize_embedding(vec: np.ndarray) -> bytes:
 
 
 def _deserialize_embedding(blob: bytes) -> np.ndarray:
-    """Unpack raw bytes back to a float32 numpy array."""
-    return np.frombuffer(blob, dtype=np.float32)
+    """Unpack raw bytes back to a unit-length float32 numpy array.
+
+    Validates before use so a corrupt/truncated row can never reach the
+    similarity math as a wrong-shape vector (np.frombuffer silently returns
+    a SHORTER array for a truncated blob, and np.dot then raises an
+    uncaught ValueError mid-scan). Raises ValueError — which
+    _semantic_lookup already catches per-row — for:
+
+      * blobs whose float count != embedding_dim() (truncated/garbage),
+      * zero-norm or non-finite vectors (division would produce NaN).
+
+    Also re-normalizes defensively: cosine_similarity assumes unit vectors,
+    and a stored vector that drifted from unit length would silently
+    distort scores instead of failing loudly.
+    """
+    from .embedding import embedding_dim
+
+    vec = np.frombuffer(blob, dtype=np.float32)
+    if vec.size != embedding_dim():
+        raise ValueError(
+            f"embedding blob has {vec.size} floats, expected {embedding_dim()}"
+        )
+    norm = float(np.linalg.norm(vec))
+    if not np.isfinite(norm) or norm == 0.0:
+        raise ValueError("embedding blob is zero-valued or non-finite")
+    return (vec / norm).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
