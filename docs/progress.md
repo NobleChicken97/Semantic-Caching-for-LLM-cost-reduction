@@ -1,6 +1,6 @@
 # 📊 Project Progress — Semantic Caching Layer for LLM Cost Reduction
 
-> **Last updated:** 2026-08-21  
+> **Last updated:** 2026-08-25  
 > **Overall completion:** ~85 % of v1 scope  
 > **Current stage:** Phases 1–5 complete (incl. live dashboard at `/dashboard`). Phase 6 artifacts built and Docker-verified locally; the actual cloud deploy + git commits await user action.
 
@@ -241,3 +241,21 @@ Goal: 10-15 known users bring free-tier keys (OpenRouter / Gemini) through one p
 | 7.7 Verification | Automated: multi-user/provider ASGI tests green. Manual real-provider runbook added to README BYOK section |
 
 Post-phase state: **100 tests passing** (was 68), ruff clean. Remaining human steps: generate USER_ID_PEPPER + ADMIN_TOKEN in the deployment env, attach Render disk (optional, paid), run README pre-launch runbook with two real keys, then open access.
+
+---
+
+## 2026-08-25 - Hardening round (embedding deserialization guard + docs sync)
+
+Source: code-level analysis pass. Every change verified empirically before implementation; full suite green after.
+
+| # | Fix | Detail |
+|---|-----|--------|
+| 1 | P1 — `_deserialize_embedding` hardened | `np.frombuffer` silently returns a SHORTER array for a truncated blob (verified: no exception for valid-but-short float counts), so the old per-row try/except never fired and `np.dot` raised an uncaught ValueError mid-scan → HTTP 500. Deserialize now validates float-count == `embedding_dim()`, rejects zero-norm/non-finite vectors, and re-normalizes defensively — raising ValueError, which `_semantic_lookup` already catches per-row. Zero caller changes. 5 proving tests added (`TestEmbeddingDeserialization`): truncated/zero blobs raise, renorm to unit length, scan survives a corrupt row end-to-end, 5×-scaled stored vector scores identically after renorm |
+| 2 | Docs — README test counts synced | "68 tests" → "105" in tech-stack table, CI section, and project-layout tree; Phase 7 (BYOK) added to the Status & roadmap checklist |
+| 3 | Docs — `/health` phase marker | Was frozen at `"phase": 2`; now reports 7. Updated together with its assertion (`test_health_returns_ok`) so the suite stays green |
+| 4 | Docs — report.md archived | Historical snapshot banner added at top pointing to progress.md as source of truth (content left intact) |
+| 5 | Polish — `__init__.py` marker | Package docstring no longer claims "Phase 1"; todos.md known-issue resolved |
+| 6 | Docs — todos.md synced | Resolved checkboxes marked (restructure commits, cost-estimation debt closed by Phase 7 model-aware pricing); known-issues table updated |
+
+Post-round state: **105 tests passing** (was 100), ruff clean.
+Known remaining limitations (deliberate, documented): O(n) semantic scan with warn-only guardrail past MAX_SEMANTIC_SCAN_ENTRIES; single-process coalescing; no upstream retry/circuit-breaker in forward_to_llm.

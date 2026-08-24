@@ -1,6 +1,6 @@
 # 📋 TODO List — Semantic Caching Layer for LLM Cost Reduction
 
-> **Last updated:** 2026-08-21  
+> **Last updated:** 2026-08-25  
 > **Status legend:** `[ ]` = not started · `[/]` = in progress · `[x]` = done
 
 ---
@@ -45,7 +45,7 @@
 - [x] Tests: `test_embedding.py` (dim, batch, empty, normalization, cosine similarity)
 - [x] Tests: `test_cache.py` expanded (two-tier exact hit, semantic paraphrase hit, unrelated miss)
 - [x] Tests: `test_api.py` (paraphrase semantic hit, unrelated miss)
-- [ ] **Commit Phase 2 changes to git** ← currently only in working tree
+- [x] **Commit Phase 2 changes to git** ← committed (repo is fully committed through Phase 7 + 2026-08-25 hardening round)
 
 ---
 
@@ -264,7 +264,7 @@ Semantic caching layer for LLM cost reduction/
 - [x] `git rm --cached cache.db` *(staged in index — no commits made per user instruction)*
 - [x] `git rm -r --cached **/__pycache__/` *(staged)*
 - [x] `git rm -r --cached **/.pytest_cache/` *(staged)*
-- [ ] Commit: `"chore: add .gitignore, remove tracked build artifacts"` ← **awaiting user**
+- [x] Commit: `"chore: add .gitignore, remove tracked build artifacts"` ✅ done (repo fully committed)
 
 #### Step 3 — Flatten the directory structure ✅
 - [x] Move `project3_semantic_cache/proxy/` → `src/proxy/`
@@ -303,9 +303,9 @@ Semantic caching layer for LLM cost reduction/
 - [x] All 45 tests pass after restructuring *(now 68 after the 2026-08-23 review-fix round)*
 
 #### Step 8 — Commit the restructure
-- [ ] Stage all changes ← **awaiting user (no-commit instruction)**
-- [ ] Commit: `"refactor: flatten repo structure, add src/ layout, rename docs"`
-- [ ] Verify git log is clean
+- [x] Stage all changes ✅ done
+- [x] Commit: `"refactor: flatten repo structure, add src/ layout, rename docs"` ✅ done
+- [x] Verify git log is clean ✅ done
 
 ---
 
@@ -322,7 +322,7 @@ Semantic caching layer for LLM cost reduction/
   - [x] Configuration reference (env vars table from `.env.example`)
   - [ ] Screenshot/demo video of dashboard (once built)
   - [x] Resume line
-- [ ] **Commit Phase 2+3 to git** ← awaiting user (all work currently in working tree / staged index only)
+- [x] **Commit Phase 2+3 to git** ← committed
 - [ ] Add `LICENSE` file (MIT) ← needs copyright owner name
 - [x] Add `Makefile` for common tasks
 
@@ -338,12 +338,13 @@ Semantic caching layer for LLM cost reduction/
 
 ## Known Issues & Technical Debt
 
-| Issue | Severity | Where |
-|-------|----------|-------|
-| `__pycache__/` directories committed to git | Low | Root `.gitignore` missing |
-| `cache.db` binary committed to git | Low | Should be in `.gitignore` |
-| `_semantic_lookup()` loads ALL non-expired entries into memory | Medium | [`cache.py`](file:///c:/Users/arpan.ARPAN/OneDrive/Desktop/projects/Semantic%20caching%20layer%20for%20LLM%20cost%20reduction/src/proxy/cache.py) L117–L125 — fine at demo scale but O(N) per request |
-| `_rough_token_count` uses `len(text)//4` heuristic | Low | [`llm_client.py`](file:///c:/Users/arpan.ARPAN/OneDrive/Desktop/projects/Semantic%20caching%20layer%20for%20LLM%20cost%20reduction/src/proxy/llm_client.py) L80–L82 — `tiktoken` would be more accurate |
-| Cost estimation hardcoded to gpt-3.5-turbo pricing | Low | [`chat.py`](file:///c:/Users/arpan.ARPAN/OneDrive/Desktop/projects/Semantic%20caching%20layer%20for%20LLM%20cost%20reduction/src/proxy/routes/chat.py) L102–L103 — should key off `model` field |
-| No `__init__.py` for `proxy` package comment still says "Phase 1" | Trivial | [`__init__.py`](file:///c:/Users/arpan.ARPAN/OneDrive/Desktop/projects/Semantic%20caching%20layer%20for%20LLM%20cost%20reduction/src/proxy/__init__.py) |
-| `_detach_log_references()` uses f-string SQL — safe here (SQL literal, not user input) but worth noting | Low | [`cache.py`](file:///c:/Users/arpan.ARPAN/OneDrive/Desktop/projects/Semantic%20caching%20layer%20for%20LLM%20cost%20reduction/src/proxy/cache.py) L222–L225 |
+| Issue | Severity | Where | Status |
+|-------|----------|-------|--------|
+| `__pycache__/` directories committed to git | Low | Root `.gitignore` | ✅ Resolved — `.gitignore` added, artifacts untracked |
+| `cache.db` binary committed to git | Low | Should be in `.gitignore` | ✅ Resolved — ignored |
+| `_semantic_lookup()` loads ALL non-expired entries into memory | Medium | `cache.py` `_semantic_lookup` — fine at demo scale but O(N) per request; warn-only guardrail past `MAX_SEMANTIC_SCAN_ENTRIES` | Open (documented limitation; swap in FAISS/sqlite-vec/pgvector at scale) |
+| `_rough_token_count` uses `len(text)//4` heuristic | Low | `llm_client.py` — `tiktoken` would be more accurate | Open (mock-mode only) |
+| Cost estimation hardcoded to gpt-3.5-turbo pricing | Low | `chat.py` | ✅ Resolved — model-aware `_estimate_cost` with DEFAULT_MODEL_PRICING + MODEL_PRICING override + prefix match (Phase 7.4) |
+| `__init__.py` package marker says "Phase 1" | Trivial | `src/proxy/__init__.py` | ✅ Resolved 2026-08-25 |
+| `_detach_log_references()` uses f-string SQL — safe here (SQL literal, not user input) but worth noting | Low | `cache.py` | Informational |
+| No upstream retry/circuit-breaker in `forward_to_llm` | Medium | `llm_client.py` — transient provider failures surface immediately to caller | Open (needs design decision: which statuses retry vs fail-fast, POST double-billing tradeoff) |

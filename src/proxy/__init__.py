@@ -1,1 +1,2 @@
-# Semantic Cache Proxy — Phase 1: Exact-String-Match Caching
+# Semantic Cache Proxy — two-tier caching (exact + BGE-small semantic),
+# BYOK multi-user scoping, metrics/dashboard, threshold-sweep eval.
