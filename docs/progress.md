@@ -279,6 +279,15 @@ is exponential from LLM_RETRY_BACKOFF_SECONDS (default 0.5 s), capped at 8 s.
 | 3 | Tests | `TestUpstreamRetries` ×5 via stub httpx client + captured fake sleep: 503→200 retries once at base backoff; 401 fails fast (1 call, no sleep); ConnectError exhausts attempts=2; Retry-After: 7 honored verbatim; attempts=1 disables retrying entirely |
 | 4 | Docs | todos.md known-issue resolved (circuit breaker noted out-of-scope); README configuration rows |
 | 5 | Refinement (same day) | Retry-After values exceeding the 30 s in-request budget now FAIL FAST instead of clamp-to-30 s-and-retry — prevents pointless multi-retry hangs on daily-cap 429s (OpenRouter free tier, per LAUNCH_CHECKLIST). Proving test: `Retry-After: 3600` → single call, immediate raise |
+| 6 | P0 fix — payload fidelity (found live during owner's Phase B Gemini test) | Route forwarded Pydantic DEFAULTS (temperature/top_p/n/stream/penalties) on every call; Gemini's OpenAI-compat endpoint rejects unknown `frequency_penalty` → 400. Now `model_dump(exclude_unset=True)`: upstreams receive exactly what the caller sent. Tests: unset-defaults stripped / explicit params verbatim |
+| 7 | DX fix — upstream error detail | `_upstream_error_response` now extracts the upstream's own message (OpenAI `{"error":{...}}` AND Google list-wrapped `[{"error":{...}}]` shapes) into our error body — e.g. "HTTP 503: This model is currently experiencing high demand" instead of a bare status. Test included |
 
-Post-round state: **111 tests passing** (was 105), ruff clean. Existing upstream-error
+Post-round state: **114 tests passing** (was 105), ruff clean. Existing upstream-error
 contract tests were unaffected — they monkeypatch `forward_to_llm` wholesale.
+Live re-verified post-fix: real gemini-3.6-flash call through proxy → 200 MISS,
+identical-response 200 HIT from cache.
+
+> Owner-key note (Phase B): Google's new "auth-style" AI Studio keys (`AQ.Ab8...`)
+> work via Bearer on the v1beta/openai compat endpoint. Runbook's `gemini-2.5-flash`
+> example is deprecated (shutdown 2026-10-16) — use `gemini-3.6-flash`; checklist
+> patched accordingly.

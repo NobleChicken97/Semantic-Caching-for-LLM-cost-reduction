@@ -115,8 +115,8 @@ Ask "<openrouter-key>" "openrouter" "<today-s-free-model-id>"
 Ask "<openrouter-key>" "openrouter" "<today-s-free-model-id>"
 
 # 2) Gemini: MISS then HIT (different user AND provider)
-Ask "<gemini-key>" "gemini" "gemini-2.5-flash"
-Ask "<gemini-key>" "gemini" "gemini-2.5-flash"
+Ask "<gemini-key>" "gemini" "gemini-3.6-flash"
+Ask "<gemini-key>" "gemini" "gemini-3.6-flash"
 
 # 3) Keyless -> expect thrown error with status 401
 try { Ask } catch { $_.Exception.Response.StatusCode.value__ }
@@ -192,8 +192,8 @@ Ask "<openrouter-key>" "openrouter" "<free-model-id>"
 Ask "<openrouter-key>" "openrouter" "<free-model-id>"
 
 # 2) Bob via Gemini, SAME question: MISS (never Alice's answer!) -> HIT
-Ask "<gemini-key>" "gemini" "gemini-2.5-flash"
-Ask "<gemini-key>" "gemini" "gemini-2.5-flash"
+Ask "<gemini-key>" "gemini" "gemini-3.6-flash"
+Ask "<gemini-key>" "gemini" "gemini-3.6-flash"
 
 # 3) Keyless -> 401
 try { Ask } catch { $_.Exception.Response.StatusCode.value__ }

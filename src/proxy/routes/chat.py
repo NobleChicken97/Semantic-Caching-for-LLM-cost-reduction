@@ -93,16 +93,43 @@ def _shared_client(request: Request) -> httpx.AsyncClient | None:
     return getattr(request.app.state, "http_client", None)
 
 
+def _upstream_error_detail(exc: httpx.HTTPStatusError) -> str | None:
+    """Best-effort extraction of the upstream error message, if any.
+
+    Handles both OpenAI-style ``{"error": {"message": ...}}`` bodies and
+    Google's list-wrapped ``[{"error": {...}}]`` REST shape. Returns None
+    for anything unparseable — the generic message still goes out.
+    """
+    try:
+        data = exc.response.json()
+    except Exception:  # noqa: BLE001 - any decode failure means "no detail"
+        return None
+    if isinstance(data, list) and data and isinstance(data[0], dict):
+        data = data[0]
+    if isinstance(data, dict):
+        err = data.get("error")
+        if isinstance(err, dict):
+            msg = err.get("message")
+            if msg:
+                return str(msg)[:300]
+    return None
+
+
 def _upstream_error_response(exc: httpx.HTTPError) -> JSONResponse:
     """Map an upstream httpx failure to an OpenAI-shaped error payload.
 
-    HTTPStatusError → pass through the upstream status code;
+    HTTPStatusError → pass through the upstream status code (plus the
+    upstream's own message when we can read it — e.g. Gemini's "high
+    demand" 503s or unknown-field 400s);
     any other request failure (timeout, connect/reset) → 502 Bad Gateway.
     """
     if isinstance(exc, httpx.HTTPStatusError):
         status = exc.response.status_code
         etype = "upstream_api_error"
         message = f"Upstream LLM API returned HTTP {status}"
+        detail = _upstream_error_detail(exc)
+        if detail:
+            message += f": {detail}"
     else:
         status = 502
         etype = "upstream_connection_error"
@@ -151,7 +178,13 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
             },
         )
     # `provider` is a proxy-side routing hint — never forwarded upstream.
-    payload = body.model_dump(exclude_none=True, exclude={"provider"})
+    # exclude_unset: forward EXACTLY what the caller sent. Injecting Pydantic
+    # defaults made every call carry temperature/top_p/n/stream/penalties,
+    # which stricter OpenAI-compat layers reject outright (Gemini's endpoint
+    # 400s on unknown frequency_penalty — found live in Phase B testing).
+    payload = body.model_dump(
+        exclude_none=True, exclude_unset=True, exclude={"provider"}
+    )
 
     # --- BYOK gate + identity ---
     # Real (non-mock) traffic must carry the caller's own key. The key itself

@@ -411,6 +411,74 @@ class TestUpstreamRetries:
             get_settings.cache_clear()
 
 
+class TestUpstreamErrorDetail:
+    @pytest.mark.asyncio
+    async def test_upstream_error_message_includes_upstream_detail(self, client, monkeypatch):
+        """The upstream's own diagnostic text rides along in our error body."""
+        import httpx
+
+        from proxy.routes import chat as chat_module
+
+        async def raise_503(request_body, *, client=None, api_key=None, base_url=None):
+            req = httpx.Request("POST", "https://upstream.test/v1/chat/completions")
+            resp = httpx.Response(
+                503,
+                request=req,
+                json=[{"error": {"code": 503, "message": "This model is currently experiencing high demand."}}],
+            )
+            raise httpx.HTTPStatusError("svc", request=req, response=resp)
+
+        monkeypatch.setattr(chat_module, "forward_to_llm", raise_503)
+
+        resp = await client.post("/v1/chat/completions", json=PROMPT_FRANCE)
+        assert resp.status_code == 503
+        assert "high demand" in resp.json()["error"]["message"]
+
+
+class TestUpstreamPayloadFidelity:
+    """Forward EXACTLY the caller's fields — never injected Pydantic defaults.
+
+    Regression: injecting temperature/top_p/n/stream/penalties defaults made
+    Gemini's OpenAI-compat endpoint 400 on unknown 'frequency_penalty'.
+    """
+
+    @pytest.fixture
+    def body_spy(self, monkeypatch):
+        from proxy.llm_client import _mock_response
+        from proxy.routes import chat as chat_module
+
+        captured = {}
+
+        async def spy(request_body, *, client=None, api_key=None, base_url=None):
+            captured["payload"] = request_body
+            return _mock_response(request_body), 0.02
+
+        monkeypatch.setattr(chat_module, "forward_to_llm", spy)
+        return captured
+
+    @pytest.mark.asyncio
+    async def test_unset_defaults_not_forwarded(self, client, body_spy):
+        resp = await client.post("/v1/chat/completions", json=PROMPT_WATER)
+        assert resp.status_code == 200
+        payload = body_spy["payload"]
+        assert set(payload.keys()) == {"model", "messages"}
+        for banned in ("temperature", "top_p", "n", "stream",
+                       "presence_penalty", "frequency_penalty"):
+            assert banned not in payload
+
+    @pytest.mark.asyncio
+    async def test_explicit_params_forwarded_verbatim(self, client, body_spy):
+        resp = await client.post(
+            "/v1/chat/completions",
+            json={**PROMPT_WATER, "temperature": 0.3, "max_tokens": 50},
+        )
+        assert resp.status_code == 200
+        payload = body_spy["payload"]
+        assert payload["temperature"] == 0.3
+        assert payload["max_tokens"] == 50
+        assert "top_p" not in payload  # still unset → still not sent
+
+
 class TestMetrics:
     @pytest.mark.asyncio
     async def test_metrics_after_requests(self, client):
