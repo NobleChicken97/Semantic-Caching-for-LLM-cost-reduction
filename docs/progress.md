@@ -259,3 +259,25 @@ Source: code-level analysis pass. Every change verified empirically before imple
 
 Post-round state: **105 tests passing** (was 100), ruff clean.
 Known remaining limitations (deliberate, documented): O(n) semantic scan with warn-only guardrail past MAX_SEMANTIC_SCAN_ENTRIES; single-process coalescing; no upstream retry/circuit-breaker in forward_to_llm.
+
+---
+
+## 2026-08-25 - Upstream resilience round (bounded retries in llm_client)
+
+Design decisions (documented inline): retry only what is safe or industry-standard —
+408/429/5xx status responses (server explicitly did not succeed → no double-billing
+risk) and TransportError (connect errors never reached the server; read/write
+timeouts *may* have been processed upstream, but bounded retries match the major
+LLM SDKs' defaults). All other 4xx fail fast on first attempt. A numeric
+Retry-After header overrides computed backoff (capped at 30 s); computed backoff
+is exponential from LLM_RETRY_BACKOFF_SECONDS (default 0.5 s), capped at 8 s.
+
+| # | Item | Detail |
+|---|------|--------|
+| 1 | `_post_with_retries` | Shared by both client paths (lifespan-managed + one-off). Warns per attempt with status/error and next delay. Returned latency covers every attempt — honest end-to-end wait; coalescing-lock holder may hold across retries during a flap, bounded ~attempts × 8 s |
+| 2 | Config | `LLM_RETRY_MAX_ATTEMPTS` (default 3 total; `1` = off) and `LLM_RETRY_BACKOFF_SECONDS` (default 0.5) added to Settings/.env.example/README config table |
+| 3 | Tests | `TestUpstreamRetries` ×5 via stub httpx client + captured fake sleep: 503→200 retries once at base backoff; 401 fails fast (1 call, no sleep); ConnectError exhausts attempts=2; Retry-After: 7 honored verbatim; attempts=1 disables retrying entirely |
+| 4 | Docs | todos.md known-issue resolved (circuit breaker noted out-of-scope); README configuration rows |
+
+Post-round state: **110 tests passing** (was 105), ruff clean. Existing upstream-error
+contract tests were unaffected — they monkeypatch `forward_to_llm` wholesale.

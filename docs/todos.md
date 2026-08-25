@@ -347,4 +347,4 @@ Semantic caching layer for LLM cost reduction/
 | Cost estimation hardcoded to gpt-3.5-turbo pricing | Low | `chat.py` | ✅ Resolved — model-aware `_estimate_cost` with DEFAULT_MODEL_PRICING + MODEL_PRICING override + prefix match (Phase 7.4) |
 | `__init__.py` package marker says "Phase 1" | Trivial | `src/proxy/__init__.py` | ✅ Resolved 2026-08-25 |
 | `_detach_log_references()` uses f-string SQL — safe here (SQL literal, not user input) but worth noting | Low | `cache.py` | Informational |
-| No upstream retry/circuit-breaker in `forward_to_llm` | Medium | `llm_client.py` — transient provider failures surface immediately to caller | Open (needs design decision: which statuses retry vs fail-fast, POST double-billing tradeoff) |
+| No upstream retry/circuit-breaker in `forward_to_llm` | Medium | `llm_client.py` | ✅ Resolved 2026-08-25 — bounded retries with exponential backoff (408/429/5xx + transport errors; `Retry-After` honored); `LLM_RETRY_MAX_ATTEMPTS` / `LLM_RETRY_BACKOFF_SECONDS`. Circuit breaker remains out of scope (single-instance demo scale) |

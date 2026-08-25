@@ -245,6 +245,155 @@ class TestUpstreamErrors:
         assert logs[0]["tokens_out"] == 0
 
 
+class TestUpstreamRetries:
+    """Bounded retry on transient upstream failures (llm_client level)."""
+
+    PAYLOAD: ClassVar[dict] = {
+        "model": "gpt-x",
+        "messages": [{"role": "user", "content": "hi"}],
+    }
+
+    @pytest.fixture
+    def no_sleep(self, monkeypatch):
+        """Capture retry delays without actually sleeping."""
+        from proxy import llm_client as llm_module
+
+        delays: list[float] = []
+
+        async def fake_sleep(seconds):
+            delays.append(seconds)
+
+        monkeypatch.setattr(llm_module, "sleep", fake_sleep)
+        return delays
+
+    @staticmethod
+    def _ok_payload():
+        return {
+            "id": "chatcmpl-ok",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "gpt-x",
+            "choices": [],
+        }
+
+    @staticmethod
+    def _stub(script):
+        """httpx-client stand-in whose .post replays ``script`` steps.
+
+        Each step is an Exception instance to raise, or a tuple
+        ``(status, json_payload[, headers_dict])`` to return.
+        """
+        import httpx as _httpx
+
+        class Stub:
+            def __init__(self):
+                self.calls = 0
+                self._script = list(script)
+
+            async def post(self, url, json=None, headers=None):
+                self.calls += 1
+                step = self._script.pop(0)
+                if isinstance(step, Exception):
+                    raise step
+                status, payload = step[0], step[1]
+                resp_headers = step[2] if len(step) > 2 else None
+                req = _httpx.Request("POST", url)
+                return _httpx.Response(
+                    status, request=req, json=payload, headers=resp_headers
+                )
+
+        return Stub()
+
+    def _real_mode(self, monkeypatch, *, attempts: str | None = None):
+        """Switch off mock mode (+ optional retry override), fresh settings."""
+        monkeypatch.setenv("MOCK_LLM", "false")
+        if attempts is not None:
+            monkeypatch.setenv("LLM_RETRY_MAX_ATTEMPTS", attempts)
+        from proxy.config import get_settings
+
+        get_settings.cache_clear()
+        return get_settings
+
+    @pytest.mark.asyncio
+    async def test_503_then_success_retries_once(self, monkeypatch, no_sleep):
+        get_settings = self._real_mode(monkeypatch)
+        try:
+            from proxy.llm_client import forward_to_llm
+
+            stub = self._stub([(503, {}), (200, self._ok_payload())])
+            body, _lat = await forward_to_llm(self.PAYLOAD, client=stub, api_key="sk-t")
+            assert stub.calls == 2
+            assert body["id"] == "chatcmpl-ok"
+            # First backoff step = base * 2^0.
+            assert no_sleep == [pytest.approx(0.5)]
+        finally:
+            get_settings.cache_clear()
+
+    @pytest.mark.asyncio
+    async def test_401_fails_fast_without_retry(self, monkeypatch, no_sleep):
+        get_settings = self._real_mode(monkeypatch)
+        try:
+            import httpx
+
+            from proxy.llm_client import forward_to_llm
+
+            stub = self._stub([(401, {"error": "bad key"})])
+            with pytest.raises(httpx.HTTPStatusError):
+                await forward_to_llm(self.PAYLOAD, client=stub, api_key="sk-bad")
+            assert stub.calls == 1
+            assert no_sleep == []
+        finally:
+            get_settings.cache_clear()
+
+    @pytest.mark.asyncio
+    async def test_connect_error_exhausts_all_attempts(self, monkeypatch, no_sleep):
+        import httpx
+
+        get_settings = self._real_mode(monkeypatch, attempts="2")
+        try:
+            from proxy.llm_client import forward_to_llm
+
+            stub = self._stub([httpx.ConnectError("refused"), httpx.ConnectError("refused")])
+            with pytest.raises(httpx.ConnectError):
+                await forward_to_llm(self.PAYLOAD, client=stub, api_key="sk-t")
+            assert stub.calls == 2
+            assert len(no_sleep) == 1
+        finally:
+            get_settings.cache_clear()
+
+    @pytest.mark.asyncio
+    async def test_retry_after_header_overrides_backoff(self, monkeypatch, no_sleep):
+        get_settings = self._real_mode(monkeypatch)
+        try:
+            from proxy.llm_client import forward_to_llm
+
+            stub = self._stub(
+                [(429, {}, {"Retry-After": "7"}), (200, self._ok_payload())]
+            )
+            body, _lat = await forward_to_llm(self.PAYLOAD, client=stub, api_key="sk-t")
+            assert stub.calls == 2
+            assert no_sleep == [7.0]
+            assert body["id"] == "chatcmpl-ok"
+        finally:
+            get_settings.cache_clear()
+
+    @pytest.mark.asyncio
+    async def test_max_attempts_one_disables_retry(self, monkeypatch, no_sleep):
+        import httpx
+
+        get_settings = self._real_mode(monkeypatch, attempts="1")
+        try:
+            from proxy.llm_client import forward_to_llm
+
+            stub = self._stub([(503, {})])
+            with pytest.raises(httpx.HTTPStatusError):
+                await forward_to_llm(self.PAYLOAD, client=stub, api_key="sk-t")
+            assert stub.calls == 1
+            assert no_sleep == []
+        finally:
+            get_settings.cache_clear()
+
+
 class TestMetrics:
     @pytest.mark.asyncio
     async def test_metrics_after_requests(self, client):

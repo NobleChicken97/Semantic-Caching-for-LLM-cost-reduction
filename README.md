@@ -202,6 +202,8 @@ All settings are environment variables (see [.env.example](.env.example)):
 | `USER_ID_PEPPER` | *(empty)* | HMAC key for deriving user_ids from caller keys. **Required before BYOK traffic**; generate once, never rotate (rotating orphans all users' cache history) |
 | `MODEL_PRICING` | *(empty)* | Pricing overrides/additions, USD per 1M in/out tokens — `name=in,out;...`. Unknown models estimate at $0.00 |
 | `MAX_SEMANTIC_SCAN_ENTRIES` | `5000` | Warn once per process when the semantic scan exceeds this many entries (see Known limitations) |
+| `LLM_RETRY_MAX_ATTEMPTS` | `3` | Total upstream attempts incl. the first; transient failures (408/429/5xx, connection errors) are retried with backoff. `1` disables retries |
+| `LLM_RETRY_BACKOFF_SECONDS` | `0.5` | Base for exponential retry backoff (capped at 8s); a provider `Retry-After` header wins over computed backoff |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8000` | Bind port |
 

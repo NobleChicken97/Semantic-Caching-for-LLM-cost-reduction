@@ -34,6 +34,13 @@ class Settings:
     # --- Semantic scan guardrail ---
     max_semantic_scan_entries: int
 
+    # --- Upstream resilience ---
+    # Transient upstream failures (HTTP 408/429/5xx, connection/transport
+    # errors) are retried with exponential backoff; a numeric Retry-After
+    # header wins over computed backoff when present.
+    llm_retry_max_attempts: int  # total attempts including the first (1 = off)
+    llm_retry_backoff_seconds: float
+
     # --- Model pricing (USD per 1M input/output tokens) ---
     # Exact-name matches win; unknown models price at $0.00 (free-tier safe).
     model_pricing: dict[str, tuple[float, float]]
@@ -135,6 +142,8 @@ def get_settings() -> Settings:
         cache_default_ttl_seconds=int(os.getenv("CACHE_TTL_SECONDS", "3600")),
         similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.85")),
         max_semantic_scan_entries=int(os.getenv("MAX_SEMANTIC_SCAN_ENTRIES", "5000")),
+        llm_retry_max_attempts=int(os.getenv("LLM_RETRY_MAX_ATTEMPTS", "3")),
+        llm_retry_backoff_seconds=float(os.getenv("LLM_RETRY_BACKOFF_SECONDS", "0.5")),
         model_pricing=_parse_model_pricing(os.getenv("MODEL_PRICING")),
         admin_token=os.getenv("ADMIN_TOKEN", ""),
         user_id_pepper=os.getenv("USER_ID_PEPPER", ""),
