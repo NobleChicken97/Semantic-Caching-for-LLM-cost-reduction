@@ -378,6 +378,23 @@ class TestUpstreamRetries:
             get_settings.cache_clear()
 
     @pytest.mark.asyncio
+    async def test_long_retry_after_fails_fast(self, monkeypatch, no_sleep):
+        """A Retry-After beyond the in-request budget surfaces immediately."""
+        import httpx
+
+        get_settings = self._real_mode(monkeypatch)
+        try:
+            from proxy.llm_client import forward_to_llm
+
+            stub = self._stub([(429, {}, {"Retry-After": "3600"})])
+            with pytest.raises(httpx.HTTPStatusError):
+                await forward_to_llm(self.PAYLOAD, client=stub, api_key="sk-t")
+            assert stub.calls == 1
+            assert no_sleep == []
+        finally:
+            get_settings.cache_clear()
+
+    @pytest.mark.asyncio
     async def test_max_attempts_one_disables_retry(self, monkeypatch, no_sleep):
         import httpx
 

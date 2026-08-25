@@ -278,6 +278,7 @@ is exponential from LLM_RETRY_BACKOFF_SECONDS (default 0.5 s), capped at 8 s.
 | 2 | Config | `LLM_RETRY_MAX_ATTEMPTS` (default 3 total; `1` = off) and `LLM_RETRY_BACKOFF_SECONDS` (default 0.5) added to Settings/.env.example/README config table |
 | 3 | Tests | `TestUpstreamRetries` ×5 via stub httpx client + captured fake sleep: 503→200 retries once at base backoff; 401 fails fast (1 call, no sleep); ConnectError exhausts attempts=2; Retry-After: 7 honored verbatim; attempts=1 disables retrying entirely |
 | 4 | Docs | todos.md known-issue resolved (circuit breaker noted out-of-scope); README configuration rows |
+| 5 | Refinement (same day) | Retry-After values exceeding the 30 s in-request budget now FAIL FAST instead of clamp-to-30 s-and-retry — prevents pointless multi-retry hangs on daily-cap 429s (OpenRouter free tier, per LAUNCH_CHECKLIST). Proving test: `Retry-After: 3600` → single call, immediate raise |
 
-Post-round state: **110 tests passing** (was 105), ruff clean. Existing upstream-error
+Post-round state: **111 tests passing** (was 105), ruff clean. Existing upstream-error
 contract tests were unaffected — they monkeypatch `forward_to_llm` wholesale.

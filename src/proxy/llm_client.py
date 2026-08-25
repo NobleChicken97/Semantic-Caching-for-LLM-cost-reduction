@@ -3,7 +3,8 @@
 Upstream resilience: transient failures (HTTP 408/429/5xx and transport
 errors) are retried with exponential backoff, bounded by
 LLM_RETRY_MAX_ATTEMPTS / LLM_RETRY_BACKOFF_SECONDS. A numeric Retry-After
-header from the server overrides computed backoff (capped at 30 s).
+header from the server overrides computed backoff; waits LONGER than the
+30 s in-request budget fail fast instead of sleeping (e.g. daily-cap 429s).
 """
 
 from __future__ import annotations
@@ -31,12 +32,12 @@ _MAX_RETRY_AFTER_SECONDS = 30.0
 
 
 def _retry_after_seconds(response: httpx.Response) -> float | None:
-    """Best-effort parse of a numeric Retry-After header, capped."""
+    """Best-effort parse of a numeric Retry-After header (uncapped seconds)."""
     raw = response.headers.get("Retry-After")
     if not raw:
         return None
     try:
-        return min(max(0.0, float(raw)), _MAX_RETRY_AFTER_SECONDS)
+        return max(0.0, float(raw))
     except ValueError:
         return None
 
@@ -75,8 +76,13 @@ async def _post_with_retries(
             status = exc.response.status_code
             if status not in _RETRYABLE_STATUSES and status < 500:
                 raise
-            last_error = exc
             retry_after = _retry_after_seconds(exc.response)
+            if retry_after is not None and retry_after > _MAX_RETRY_AFTER_SECONDS:
+                # Server asked for a longer wait than we will spend
+                # in-request (e.g. a daily-cap 429) — surface the error now
+                # rather than clamp-and-retry pointlessly.
+                raise
+            last_error = exc
             delay = (
                 retry_after
                 if retry_after is not None
