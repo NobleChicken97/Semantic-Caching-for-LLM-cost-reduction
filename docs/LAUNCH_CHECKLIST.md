@@ -65,14 +65,16 @@
 
 ### B1. OpenRouter key
 1. https://openrouter.ai → sign up (GitHub login works, no credit card)
-2. Profile icon → **Keys** → **Create Key** → name it → **copy immediately** (shown once)
+2. Profile icon → **Keys** → **Create Key** → name it **exactly `semantic-cache-proxy`** → **copy immediately** (shown once)
+   > ⚠️ You already use OpenRouter keys for other work — this dedicated name keeps the proxy's quota usage, rotation, and revocation separate from your personal keys. Revoke it without touching anything else.
 3. **Pick today's free model:** https://openrouter.ai/models → filter **Price: Free** → copy an ID ending in `:free`
    > ⚠️ The `:free` roster **rotates**. As of mid-2026, DeepSeek/Mistral/Gemini are NOT free there; Llama/Qwen/Gemma variants usually are. Always re-check on launch day.
 4. **Rate limits you inherit:** 20 req/min hard cap · **50 requests/day** fresh account.
    💡 One-time **$10 credit purchase permanently raises the daily cap to 1,000/day** (credits never expire). Recommended for whoever tests most — it's *their* key, *their* choice.
 
 ### B2. Gemini key
-1. https://aistudio.google.com → sign in with Google → **Get API key** → Create (no GCP billing needed)
+1. https://aistudio.google.com → sign in with Google → **Get API key** → **Create API key in a NEW project** → name the project **`semantic-cache-proxy`**
+   > ⚠️ Dedicated project = dedicated rate-limit bucket (Gemini free quotas are per *project*) and a key listing you can tell apart from your existing keys at a glance.
 2. Note the current Flash model ID (use `gemini-3.6-flash` — `gemini-2.5-flash` shuts down 2026-10-16) and your live quotas: AI Studio → **rate-limit** view
    - Free tier is roughly **10 RPM / few-hundred requests-per-day** for Flash-class (per *project*, shared by all keys in that project)
    - ⚠️ **Free-tier prompts may be used by Google to improve products** — fine for demo traffic, not for anything sensitive
@@ -95,8 +97,11 @@ $env:USER_ID_PEPPER = "paste-any-random-32-byte-hex-here"
 python -m uvicorn src.proxy.main:app --host 127.0.0.1 --port 8000
 ```
 
-Terminal 2 — define the helper once:
+Terminal 2 — define the helper once, and stash the keys in SC-prefixed variables (distinct from your everyday `OPENROUTER_API_KEY` / `GEMINI_API_KEY` so the proxy's keys can't be confused or clobbered):
 ```powershell
+$SC_OPENROUTER = "<openrouter-key>"      # the one named 'semantic-cache-proxy'
+$SC_GEMINI     = "<gemini-key>"          # the one in project 'semantic-cache-proxy'
+
 function Ask([string]$Key,[string]$Provider,[string]$Model="gpt-3.5-turbo",
              [string]$Content="What is the capital of France?",
              [string]$Base="http://127.0.0.1:8000"){
@@ -111,12 +116,12 @@ function Ask([string]$Key,[string]$Provider,[string]$Model="gpt-3.5-turbo",
 Run the five checks:
 ```powershell
 # 1) OpenRouter: MISS then HIT
-Ask "<openrouter-key>" "openrouter" "<today-s-free-model-id>"
-Ask "<openrouter-key>" "openrouter" "<today-s-free-model-id>"
+Ask $SC_OPENROUTER "openrouter" "<today-s-free-model-id>"
+Ask $SC_OPENROUTER "openrouter" "<today-s-free-model-id>"
 
 # 2) Gemini: MISS then HIT (different user AND provider)
-Ask "<gemini-key>" "gemini" "gemini-3.6-flash"
-Ask "<gemini-key>" "gemini" "gemini-3.6-flash"
+Ask $SC_GEMINI "gemini" "gemini-3.6-flash"
+Ask $SC_GEMINI "gemini" "gemini-3.6-flash"
 
 # 3) Keyless -> expect thrown error with status 401
 try { Ask } catch { $_.Exception.Response.StatusCode.value__ }
@@ -124,7 +129,7 @@ try { Ask } catch { $_.Exception.Response.StatusCode.value__ }
 # 4) Non-allowlisted base URL -> expect 400
 try {
   Invoke-RestMethod -Uri "http://127.0.0.1:8000/v1/chat/completions" -Method Post `
-    -Headers @{Authorization="Bearer <openrouter-key>"; "X-LLM-Base-URL"="https://attacker.example/v1"} `
+    -Headers @{Authorization="Bearer $SC_OPENROUTER"; "X-LLM-Base-URL"="https://attacker.example/v1"} `
     -ContentType "application/json" `
     -Body '{"model":"x","messages":[{"role":"user","content":"hi"}]}'
 } catch { $_.Exception.Response.StatusCode.value__ }
@@ -173,6 +178,9 @@ then the dashboard scoping glance).
 
 Terminal 2 setup (server is already running on Render; nothing to start):
 ```powershell
+$SC_OPENROUTER = "<openrouter-key>"   # named 'semantic-cache-proxy'
+$SC_GEMINI     = "<gemini-key>"       # in project 'semantic-cache-proxy'
+
 function Ask([string]$Key,[string]$Provider,[string]$Model="gpt-3.5-turbo",
              [string]$Content="What is the capital of France?"){
   $Base = "https://<your-service>.onrender.com"   # ← paste your URL
@@ -188,12 +196,12 @@ function Ask([string]$Key,[string]$Provider,[string]$Model="gpt-3.5-turbo",
 
 ```powershell
 # 1) Alice via OpenRouter: MISS -> HIT
-Ask "<openrouter-key>" "openrouter" "<free-model-id>"
-Ask "<openrouter-key>" "openrouter" "<free-model-id>"
+Ask $SC_OPENROUTER "openrouter" "<free-model-id>"
+Ask $SC_OPENROUTER "openrouter" "<free-model-id>"
 
 # 2) Bob via Gemini, SAME question: MISS (never Alice's answer!) -> HIT
-Ask "<gemini-key>" "gemini" "gemini-3.6-flash"
-Ask "<gemini-key>" "gemini" "gemini-3.6-flash"
+Ask $SC_GEMINI "gemini" "gemini-3.6-flash"
+Ask $SC_GEMINI "gemini" "gemini-3.6-flash"
 
 # 3) Keyless -> 401
 try { Ask } catch { $_.Exception.Response.StatusCode.value__ }
@@ -202,7 +210,7 @@ try { Ask } catch { $_.Exception.Response.StatusCode.value__ }
 try {
   Invoke-RestMethod -Uri "https://<your-service>.onrender.com/v1/chat/completions" `
     -Method Post `
-    -Headers @{Authorization="Bearer <openrouter-key>"; "X-LLM-Base-URL"="https://attacker.example/v1"} `
+    -Headers @{Authorization="Bearer $SC_OPENROUTER"; "X-LLM-Base-URL"="https://attacker.example/v1"} `
     -ContentType "application/json" `
     -Body '{"model":"x","messages":[{"role":"user","content":"hi"}]}'
 } catch { $_.Exception.Response.StatusCode.value__ }
