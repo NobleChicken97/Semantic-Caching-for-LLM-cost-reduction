@@ -26,7 +26,6 @@ the same tool, just callable only in **Agent mode**, not plain chat.
 |---|:---:|:---:|:---:|:---:|---|
 | **context7** | ✅ | ✅ (agent mode) | ✅ | ✅ | Any question about a library's current API — pulls live docs instead of relying on training-data memory |
 | **serena** | ✅ | ✅ (agent mode) | ✅ | ✅ | The actual file/symbol editing backbone — reads, edits, renames symbols, runs shell commands. This is what makes an agent's code edits precise instead of blind text replacement |
-| **refero** | ✅ | ✅ (agent mode) | ✅ | ✅ | Looking for a UI/screen pattern reference before building something from scratch |
 | **motion** | ✅ | ✅ (agent mode) | ✅ | ✅ | Animation-library questions/best practices. Free tier only — don't expect `motion-plus`-gated features (performance-audit, transition-preview) to work anywhere |
 
 **StitchMCP** — Antigravity only, intentionally not mirrored. It's Google's own
@@ -53,10 +52,11 @@ new setup you never reach for these, that's your own signal to prune them later.
 
 ---
 
-## 3. Research, Spec-Writing & Review Skills (canonical set)
+## 3. Research, Spec-Writing & Review Skills + Codebase Analysis (canonical set)
 
 | Skill | Copilot | Continue | Antigravity | OpenCode | Use when | How |
-|---|:---:|:---:|:---:|:---:|---|---|
+|:---|:---:|:---:|:---:|:---:|---|---|
+| **graphify** | ✅ | — | ✅ | ✅ | Understanding a codebase before architecting, refactoring, or debugging — maps code, docs, PDFs, and images into a queryable knowledge graph with community detection and an audit trail. | Type `/graphify .` in the assistant (or `graphify .` in PowerShell). Install: `graphify <platform> install` (global) or `graphify install --project <platform>` (per-repo). |
 | **grill-me** | ✅ | rules file (partial) | ✅ | ✅ | Stress-testing a design/architecture decision before committing | Auto-triggers on "should I do X or Y" style prompts, or name it |
 | **to-spec** | ✅ | — | ✅ | ✅ | Converting a rough idea into a written spec | Name it explicitly — it's a conversion tool, not something that should auto-fire |
 | **to-tickets** | ✅ | — | ✅ | ✅ | Converting a spec into individual dev tickets | Name it explicitly |

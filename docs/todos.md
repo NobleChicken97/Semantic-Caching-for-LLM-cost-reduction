@@ -1,350 +1,110 @@
-# 📋 TODO List — Semantic Caching Layer for LLM Cost Reduction
+# TODO — Semantic Caching Layer for LLM Cost Reduction
 
-> **Last updated:** 2026-08-25  
-> **Status legend:** `[ ]` = not started · `[/]` = in progress · `[x]` = done
-
----
-
-## Phase 1 — Proxy Skeleton + Exact-Match Cache ✅
-
-- [x] Stand up FastAPI service mirroring OpenAI `/v1/chat/completions` shape
-- [x] Implement `ChatCompletionRequest` / `ChatCompletionResponse` Pydantic models
-- [x] Implement `canonical_prompt()` for stable hash key
-- [x] SQLite schema: `cache_entries`, `request_log`, `labeled_test_pairs` tables
-- [x] SHA-256 exact-string-match cache (`_hash_prompt` + `_exact_lookup`)
-- [x] `store()` to insert new cache entries
-- [x] `purge()` to delete single entry or entire cache
-- [x] `_delete_entry()` with foreign key detachment from `request_log`
-- [x] LLM forwarding client with `MOCK_LLM` toggle for testing
-- [x] Mock response that echoes the last user message
-- [x] Rough token count estimator (`~4 chars/token`)
-- [x] Configuration via env vars (`Settings` dataclass)
-- [x] `.env.example` with all configurable values documented
-- [x] `GET /health` endpoint
-- [x] `GET /metrics` endpoint returning `hit_rate`, `total_requests`, `estimated_cost_saved_usd`, latency averages
-- [x] `POST /cache/purge` endpoint
-- [x] Integration tests (`test_api.py`): health, first-miss, identical-hit, metadata presence
-- [x] Unit tests (`test_cache.py`): hash, exact match, purge, metrics
+> **Last updated:** 2026-09-01 (verification pass)
+> **Status legend:** 🔴 = known bug · 🟡 = planned enhancement · 🟢 = nice-to-have / stretch · ✅ = done
+> **Priority:** 🔴 P0 (blocks demo) · 🟠 P1 (blocks live deploy / key stories) · 🟡 P2 (polish) · 🟢 P3 (whenever)
 
 ---
 
-## Phase 2 — Semantic Matching ✅
+## 🔴 P0 — Known bug (blocks demo today)
 
-- [x] Add `sentence-transformers>=3.0.0` and `numpy>=1.24.0` to `requirements.txt`
-- [x] Create `embedding.py` — lazy-loaded `BAAI/bge-small-en-v1.5` on CPU
-- [x] `embed_texts()` returning 2D float32 array `(N, 384)`, L2-normalized
-- [x] `cosine_similarity()` via dot product on unit vectors
-- [x] `embedding_dim()` returning 384
-- [x] Serialize/deserialize embeddings to/from BLOB (`float32.tobytes`)
-- [x] `_semantic_lookup()` — iterate non-expired entries, compute cosine sim, return best match ≥ threshold
-- [x] Two-tier `lookup()`: exact hash → semantic fallback
-- [x] `store()` now generates and saves embedding alongside response
-- [x] Model warmup in FastAPI `lifespan` handler
-- [x] Update `chat.py` to use two-tier lookup
-- [x] `pyproject.toml` with pytest asyncio config
-- [x] Tests: `test_embedding.py` (dim, batch, empty, normalization, cosine similarity)
-- [x] Tests: `test_cache.py` expanded (two-tier exact hit, semantic paraphrase hit, unrelated miss)
-- [x] Tests: `test_api.py` (paraphrase semantic hit, unrelated miss)
-- [x] **Commit Phase 2 changes to git** ← committed (repo is fully committed through Phase 7 + 2026-08-25 hardening round)
+One real issue, fully diagnosed and verified recoverable (root cause: folder move out of OneDrive lost two directories; see `progress.md` 2026-09-01 session 2). All three restore sources verified byte-identical: GitHub remote `main`, the OneDrive remnant copy, and the extracted remote tarball (which passed 114/114 tests).
 
----
+- [ ] **🔴 P0** Restore the two lost directories. Two verified ways:
 
-## Phase 3 — Threshold Validation 🔧
-
-### 3.1 — Labeled Test Pair Dataset ✅
-- [x] Initial 20 pairs seeded in `seed_test_pairs()` (10 should-match, 10 should-not-match)
-- [x] Expand to ≥30 pairs → **31 pairs** (16 should-match, 15 should-not-match)
-- [x] Add edge cases: very short ("Hi"/"Goodbye", "What is AI?"), typos ("captial"), code snippets (`sorted(items, key=len)` paraphrase; add-vs-multiply hard negative at sim 0.845). All labels empirically validated against real BGE similarities before committing (see `scripts/check_pairs.py`)
-- [x] Exported pairs to standalone JSON: [`data/labeled_test_pairs.json`](../data/labeled_test_pairs.json) via `scripts/export_test_pairs.py`
-
-### 3.2 — Threshold Sweep Endpoint ✅
-- [x] `ThresholdSweepRequest` / `ThresholdSweepResponse` / `ThresholdResult` Pydantic models defined
-- [x] Implement the sweep logic in new module `src/proxy/eval.py`:
-  - [x] Load all `labeled_test_pairs`, batch-embed every unique prompt **once** (2 texts per pair in a single `embed_texts` call)
-  - [x] Compute cosine similarity **once per pair**, then classify at each threshold from precomputed scores (mathematically identical to per-threshold embedding, ~7× cheaper)
-  - [x] Classify: if `similarity >= threshold` → predicted "should match"
-  - [x] Precision = TP/(TP+FP), recall = TP/(TP+FN), F1 = 2·P·R/(P+R) with zero-division-safe conventions
-  - [x] Return `ThresholdSweepResponse` with results per threshold
-- [x] Register `POST /eval/threshold-sweep` route in `main.py` (app bumped to v0.3.0)
-
-### 3.3 — Threshold Analysis & Documentation ✅
-- [x] Run sweep at thresholds `[0.80, 0.82, 0.85, 0.88, 0.90, 0.93, 0.95]` via `scripts/run_sweep.py`
-- [x] Documented curve + borderline-pair analysis in [`THRESHOLD_ANALYSIS.md`](THRESHOLD_ANALYSIS.md); summary table also in root README
-- [x] **Default 0.85 justified with measured data: F1 peaks there (0.857)** — below it antonym pairs (hello/goodbye Spanish @ 0.864) become false hits; above it genuine paraphrases (2+2 ↔ "calculate two plus two" @ 0.860) stop hitting
-- [x] Tradeoff table created (markdown; chart deferred to Phase 5 dashboard)
-
-### 3.4 — Tests for Threshold Sweep ✅
-- [x] Unit tests (`tests/test_eval.py`, 8 tests): response structure, identical-pair P/R/F1=1.0, mixed-dataset known outcomes, all-negative safe division, recall monotonicity, empty inputs, dataset size ≥30
-- [x] Integration tests (`tests/test_api.py::TestThresholdSweepEndpoint`, 4 tests): HTTP structure, low-threshold recall ≥0.9 on seeded data, empty thresholds, 422 validation
-- Note: float32 dot products of unit vectors land within ±1e-7 of 1.0, so exact-match assertions use threshold 0.999 (documented in tests)
-
----
-
-## Phase 4 — Invalidation + Bypass ✅ (mostly)
-
-- [x] TTL-based expiry on cache entries (`expires_at = now + cache_default_ttl_seconds`)
-- [x] `_exact_lookup()` checks `expires_at`, deletes expired entry
-- [x] `_semantic_lookup()` filters `expires_at > now` in SQL query
-- [x] TTL configurable via `CACHE_TTL_SECONDS` env var (default: 3600s)
-- [x] Manual purge endpoint: `POST /cache/purge` (single entry via `entry_id` or full purge)
-- [x] Foreign key safety: `_detach_log_references()` nullifies `request_log.matched_entry_id` before deletion
-- [x] `X-Cache-Bypass` header handling in `chat.py` — bypass → forward directly → log as "BYPASS"
-- [x] Tests: purge all, purge single, purge with log references, bypass header
-- [x] **Test: TTL expiry** — `tests/test_cache.py::TestTtlExpiry` (2 tests): backdate `expires_at` in DB, verify exact tier refuses + deletes the entry, and semantic tier's SQL filter skips expired rows (paraphrase probe so exact tier can't serve it first)
-
----
-
-## Phase 5 — Metrics + Dashboard 🔧
-
-### 5.1 — Backend Metrics (Done)
-- [x] `request_log` writes on every request path (HIT, MISS, BYPASS)
-- [x] Fields logged: `timestamp`, `prompt_text`, `prompt_hash`, `outcome`, `matched_entry_id`, `similarity_score`, `latency_ms`, `estimated_cost_usd`, `tokens_in`, `tokens_out`
-- [x] `GET /metrics` endpoint returning aggregated data
-- [x] Cost estimation using gpt-3.5-turbo pricing
-- [x] Tests: `test_metrics_after_requests`, `test_empty_metrics`, `test_metrics_after_hits_and_misses`
-
-### 5.2 — Dashboard UI ✅ (FastAPI + Chart.js — single service at `/dashboard`)
-> Technology decision (2026-08-21): **FastAPI + Chart.js** over Streamlit — zero new Python deps (Chart.js via CDN), deploys as ONE unit in Phase 6, same-port integration.
-
-- [x] **Metrics Dashboard page**
-  - [x] Hit rate percentage card + HIT/MISS split doughnut chart
-  - [x] Total requests counter
-  - [x] Cumulative cost saved (USD, 4-decimal precision)
-  - [x] Hit vs Miss latency comparison (bar chart + summary card)
-  - [x] Auto-refresh every 5 s (toggleable) + manual refresh button
-- [x] **Cache Browser page**
-  - [x] Table of `cache_entries` (id, prompt, model, created, expires, hits, last-hit) with server-side substring search (`?q=`) + client-side re-query on type
-  - [x] Manual purge action per row (with confirm)
-  - [x] "Purge ALL" button (with confirm; log history preserved per FK contract)
-- [x] **Threshold Sweep page** (Phase 3.2 dependency met)
-  - [x] Editable thresholds input + Run button → `POST /eval/threshold-sweep`
-  - [x] Precision/recall/F1 line chart + results table
-  - [x] Best-F1 row auto-highlighted; default 0.85 called out in caption linking THRESHOLD_ANALYSIS.md
-- [x] **Live Request Log page**
-  - [x] Polls `/logs/recent?limit=` every 4 s while tab visible (limit selector 25–250)
-  - [x] Each row: outcome badge (HIT/MISS/BYPASS), similarity score, latency, tokens in/out, estimated cost
-- [x] Supporting read-only endpoints added: `GET /cache/entries?q=`, `GET /logs/recent?limit=` (both tested, app v0.4.0)
-
----
-
-## Phase 6 — Deploy + Integrate 🔧 (artifacts done & verified locally; live deploy needs your account)
-
-- [x] Choose platform: **Render blueprint (`render.yaml`) + Railway/Heroku Procfile both provided** — pick either
-- [x] Create `Procfile` (Railway/Heroku) and `render.yaml` (Render Blueprint, health check `/health`)
-- [x] Add `Dockerfile` + `.dockerignore`: CPU-only torch (`torch==2.5.1+cpu` pin, image measured **2.11 GB** on 2026-08-23 vs ~4+ with CUDA), BGE model baked in for ~14 s cold starts. **Verified locally**: build succeeds; container healthy; MISS→HIT flow + dashboard all work inside it
-- [x] Deployment guide added to README (incl. free-tier caveats: ephemeral SQLite, 512 MB RAM limit)
-- [ ] Set environment variables on deployment platform ← **needs your account** (defaults to `MOCK_LLM=true` = zero-spend demo)
-- [ ] Set spend cap on LLM API key for public deployment ← **do this BEFORE flipping `MOCK_LLM=false`**
-- [ ] Deploy and verify `/health`, `/metrics`, `/v1/chat/completions` work remotely ← push repo → Render "New + → Blueprint"
-- [ ] **(Stretch)** Wire in front of Project 01 (RAG) or Project 02 (Agent)
-- [ ] **(Stretch)** Run real traffic through proxy, collect before/after cost data
-- [ ] **(Stretch)** Document cost savings in README
-
----
-
-## Phase 0 — Repo Restructuring 🔴 HIGH PRIORITY
-
-The current repo has several structural issues that should be fixed **before** adding more features. This avoids compounding the mess and makes the project look professional for portfolio/interview use.
-
-### Current Problems
-
-```
-REPO ROOT (Semantic caching layer for LLM cost reduction/)
-├── README.md                          ← empty
-├── docs/                              ← docs live here, but…
-│   ├── Project3_Semantic_Cache_MASTER_GUIDE.md
-│   ├── project3_semantic_cache_PRD.txt
-│   ├── project3_semantic_cache_detail.txt
-│   ├── progress.md / report.md / todos.md
-│
-└── project3_semantic_cache/           ← ⚠️ UNNECESSARY NESTING — all source is one level too deep
-    ├── .env.example
-    ├── cache.db                       ← ⚠️ BINARY committed to git
-    ├── pyproject.toml                 ← only has pytest config, no project metadata
-    ├── requirements.txt
-    ├── .serena/                       ← tool config, should be gitignored
-    ├── proxy/
-    │   ├── __pycache__/               ← ⚠️ COMMITTED to git
-    │   ├── routes/__pycache__/        ← ⚠️ COMMITTED to git
-    │   └── (source files)
-    └── tests/
-        └── __pycache__/               ← ⚠️ COMMITTED to git
-```
-
-**Issues identified:**
-1. **Unnecessary nesting** — `project3_semantic_cache/` adds a pointless directory level. Source should live at root
-2. **No `.gitignore`** — `__pycache__/`, `cache.db`, `.env`, `.pytest_cache/`, `.serena/cache/` are all tracked
-3. **Build artifacts in git** — 8 `.pyc` files and a binary `cache.db` are committed
-4. **Empty README** — first thing a visitor sees
-5. **No project-level `pyproject.toml`** — current one only has pytest config; no `[project]` metadata
-6. **No `src/` or flat layout convention** — `proxy/` package sits inside `project3_semantic_cache/` instead of at a standard location
-7. **No `Makefile` / `scripts/`** — no easy way to run common tasks
-
-### Target Structure
-
-```
-Semantic caching layer for LLM cost reduction/
-├── .gitignore                      ← NEW: comprehensive gitignore
-├── README.md                       ← POPULATED: problem → arch → how-to-run
-├── LICENSE                         ← NEW: choose MIT or Apache-2.0
-├── Makefile                        ← NEW: make run, make test, make sweep
-├── pyproject.toml                  ← EXPANDED: [project] metadata + [tool.pytest]
-├── requirements.txt                ← MOVED from project3_semantic_cache/
-├── .env.example                    ← MOVED from project3_semantic_cache/
-│
-├── docs/
-│   ├── PRD.md                      ← RENAMED: cleaner name
-│   ├── MASTER_GUIDE.md             ← RENAMED: cleaner name
-│   ├── TECHNICAL_DETAIL.md         ← RENAMED: cleaner name
-│   ├── progress.md
-│   ├── report.md
-│   └── todos.md
-│
-├── src/
-│   └── proxy/                      ← MOVED from project3_semantic_cache/proxy/
-│       ├── __init__.py
-│       ├── main.py
-│       ├── config.py
-│       ├── models.py
-│       ├── cache.py
-│       ├── database.py
-│       ├── embedding.py
-│       ├── llm_client.py
-│       └── routes/
-│           ├── __init__.py
-│           └── chat.py
-│
-├── tests/                          ← MOVED from project3_semantic_cache/tests/
-│   ├── conftest.py
-│   ├── test_api.py
-│   ├── test_cache.py
-│   └── test_embedding.py
-│
-└── data/
-    └── labeled_test_pairs.json     ← NEW: exported from seed_test_pairs() for reproducibility
-```
-
-### Step-by-Step Restructuring Checklist
-
-#### Step 1 — Create `.gitignore` (do this FIRST) ✅
-- [x] Create root `.gitignore` with:
+  **Way 1 — plain file copy, no git involved (simplest, verified identical files):**
+  ```powershell
+  $src = "C:\Users\arpan.ARPAN\OneDrive\Desktop\projects\Semantic caching layer for LLM cost reduction\src\proxy"
+  Copy-Item "$src\routes" "src\proxy\routes" -Recurse
+  Copy-Item "$src\static" "src\proxy\static" -Recurse
+  Remove-Item "src\proxy\routes\__pycache__" -Recurse -Force -ErrorAction SilentlyContinue
   ```
-  # Python
-  __pycache__/
-  *.py[cod]
-  *.egg-info/
-  dist/
-  build/
-  .eggs/
+  (The last line drops the stale OneDrive `__pycache__` that rides along; harmless either way — Python recompiles on mtime mismatch.)
+  This brings back three files: `routes/chat.py` (the entire `POST /v1/chat/completions` handler: BYOK key extraction, user_id derivation, provider resolution, two-tier lookup, coalescing, `forward_to_llm`, response shaping, `_estimate_cost`, log writes), `routes/__init__.py` (package marker), and `static/index.html` (the single-page Chart.js dashboard: metrics cards, HIT/MISS doughnut, latency bars, per-user savings table, cache browser with purge, threshold-sweep runner, live request log). Alternative source with the same bytes: `git clone https://github.com/NobleChicken97/Semantic-Caching-for-LLM-cost-reduction` anywhere and copy from there.
 
-  # Environment
-  .env
-  .venv/
-  venv/
-
-  # IDE
-  .vscode/
-  .idea/
-
-  # Project runtime
-  cache.db
-  *.db-journal
-  *.db-wal
-
-  # Testing
-  .pytest_cache/
-  htmlcov/
-  .coverage
-
-  # Tools
-  .serena/cache/
+  **Way 2 — repair the local repo first, then restore via git (needed anyway before the next commit):**
+  The Desktop `.git` is a non-functional stub (missing `refs/` + `objects/`; git rejects it with "not a git repository" — verified). The OneDrive remnant's `.git` is the only local copy of the history and is functional after this session's `HEAD`/`config` repair:
+  ```powershell
+  Remove-Item -Recurse -Force .git
+  Copy-Item "C:\Users\arpan.ARPAN\OneDrive\Desktop\projects\Semantic caching layer for LLM cost reduction\.git" ".git" -Recurse
+  git log --oneline -3        # expect: 0f8f7d7, 6791551, b7d588e (11 commits total)
+  git checkout origin/main -- src/proxy/routes src/proxy/static
   ```
+  Note: the copied `.git` has no `index` file, so the first `git status` will look odd (everything untracked/deleted). Resolve with `git add -A` before committing — the resulting commit's tree will equal remote `main` + today's docs edits.
+- [ ] **🔴 P0** Verify after restore (acceptance):
+  ```powershell
+  python -m pytest tests/ -q      # expect: 114 passed
+  $env:MOCK_LLM = "true"; python -m uvicorn src.proxy.main:app --host 127.0.0.1 --port 8000
+  # /health -> {"status": "ok", "phase": 7}; /dashboard -> 200 with the four tabs
+  ```
+- [ ] **🔴 P0** Rebuild the local git repo state: after Way 2 above, `git status` shows the working tree vs `origin/main` — expect only today's docs edits + the README/LAUNCH_CHECKLIST test-count fixes + the restored files as new. Commit and push so remote and local stay in lockstep (remote is also missing the root `skills2use.md` and today's docs rewrite).
 
-#### Step 2 — Remove tracked artifacts from git
-- [x] `git rm --cached cache.db` *(staged in index — no commits made per user instruction)*
-- [x] `git rm -r --cached **/__pycache__/` *(staged)*
-- [x] `git rm -r --cached **/.pytest_cache/` *(staged)*
-- [x] Commit: `"chore: add .gitignore, remove tracked build artifacts"` ✅ done (repo fully committed)
+> Why not just re-download the whole repo? The Desktop tree is otherwise identical to remote `main` (verified by full content diff — the 25 hash-flagged files are line-ending noise only), so a targeted checkout loses nothing and keeps the working tree's docs/ (newer than remote) intact.
 
-#### Step 3 — Flatten the directory structure ✅
-- [x] Move `project3_semantic_cache/proxy/` → `src/proxy/`
-- [x] Move `project3_semantic_cache/tests/` → `tests/`
-- [x] Move `project3_semantic_cache/.env.example` → `.env.example` (root)
-- [x] Move `project3_semantic_cache/requirements.txt` → `requirements.txt` (root)
-- [x] Delete the now-empty `project3_semantic_cache/` directory *(dir removed except an empty locked shell held by OneDrive/LSP — delete manually after unlock)*
-- [x] Update root `pyproject.toml`: `testpaths = ["tests"]` + `pythonpath = ["src"]` (pytest ≥7 native resolution — no editable install needed)
-- [x] Update import paths: package-relative imports unchanged; `main.py` uvicorn string → `"src.proxy.main:app"`; full suite green at new layout (45 passed)
+## 🟠 P1 — Blocks live deploy / key interview story
 
-#### Step 4 — Rename docs for clarity ✅
-- [x] Convert `docs/project3_semantic_cache_PRD.txt` → `docs/PRD.md` (markdown conversion, content preserved)
-- [x] Rename `docs/Project3_Semantic_Cache_MASTER_GUIDE.md` → `docs/MASTER_GUIDE.md`
-- [x] Convert `docs/project3_semantic_cache_detail.txt` → `docs/TECHNICAL_DETAIL.md` (markdown tables added)
+- [ ] **🟠 P1** Apply Render Blueprint (`render.yaml`) and run `docs/LAUNCH_CHECKLIST.md` Phases A–D end-to-end.
+  - Generate `USER_ID_PEPPER` and `ADMIN_TOKEN` (32-byte hex each, never rotate); set as Render env secrets.
+  - With two real keys (Alice via OpenRouter free model, Bob via Gemini flash), confirm: MISS → HIT for Alice; MISS → HIT for Bob (different `user_id`s in `/cache/entries`); keyless → 401; non-allowlisted `X-LLM-Base-URL` → 400; dashboard shows both users accumulating independently.
+  - Acceptance: public URL `/health` returns 200; the BYOK runbook's 4 checks all pass.
+- [ ] **🟠 P1** Re-measure threshold curve against current BGE weights on the HF Hub.
+  - `python scripts/run_sweep.py` (or hit `POST /eval/threshold-sweep`) and confirm F1 still peaks at 0.85. If the F1 peak has shifted, decide whether to (a) re-pin the BGE weights in the Dockerfile to the prior version, or (b) re-justify the new default in `docs/THRESHOLD_ANALYSIS.md` and update README.
+- [ ] **🟠 P1** Add the `LICENSE` file (MIT) — pending copyright-owner name decision from you.
+- [ ] **🟠 P1** Decide the fate of the OneDrive remnant copy (`C:\Users\arpan.ARPAN\OneDrive\Desktop\projects\Semantic caching layer for LLM cost reduction`): it holds the only local git history (11 commits, now functional after HEAD/config repair) — keep until the Desktop repo has been re-synced from remote and verified, then archive/delete to avoid future confusion.
 
-#### Step 5 — Upgrade `pyproject.toml` ✅
-- [x] Add `[project]` section with name (`semantic-cache-proxy`), version (0.2.0), description, requires-python (>=3.10), dependencies *(authors/license omitted — need owner name decision)*
-- [ ] Add `[project.scripts]` for CLI entry point — *deferred: an ASGI app is not a console entry point; `make run` covers it*
-- [x] Keep `[tool.pytest.ini_options]` section (+ `pythonpath = ["src"]`)
-- [ ] Consider adding `[tool.ruff]` or `[tool.black]` for code formatting config
+## 🟡 P2 — Polish
 
-#### Step 6 — Add convenience files
-- [x] Create `Makefile` with targets:
-  - `make install` — `pip install -r requirements.txt`
-  - `make run` — `uvicorn src.proxy.main:app --reload`
-  - `make test` — `pytest tests/ -v`
-  - `make sweep` — `curl -X POST localhost:8000/eval/threshold-sweep ...`
-  - `make lint` — `ruff check src/ tests/`
-- [ ] Create `LICENSE` (MIT recommended) ← **needs copyright owner name from user**
-- [x] Export labeled test pairs to `data/labeled_test_pairs.json` for reproducibility (31 pairs via `scripts/export_test_pairs.py`)
+- [ ] **🟡 P2** Run `python -m ruff check --fix tests/` to clear the 10 `I001` import-sort warnings flagged by local ruff 0.16.4 (CI's `ruff>=0.6.0` floor passes clean; these are newer-linter-only, auto-fixable, zero-risk).
+- [ ] **🟡 P2** `ruff format --check` is deliberately not gated in CI (16 files would need reformatting). Pick a session to run `ruff format src/ tests/ scripts/`, commit, and then enable the format check in `.github/workflows/ci.yml`.
+- [ ] **🟡 P2** Rename `test_seeded_dataset_has_32_pairs` → the set has 31 pairs (the test asserts `>= 30`, so it passes; the name is stale — verified by AST count and `data/labeled_test_pairs.json`'s `"count": 31`).
+- [ ] **🟡 P2** Replace `_rough_token_count` (`len(text)//4` heuristic) with `tiktoken` for accuracy on paid-model rows. Mock traffic doesn't need it; BYOK free-tier traffic doesn't need it; matters only when someone proxies a paid model and wants the `estimated_cost_usd` to be honest.
+- [ ] **🟡 P2** Make the schema file/dir more discoverable: right now `data/labeled_test_pairs.json` exists but the `seed_test_pairs()` source-of-truth lives inline in `database.py`. Consider exporting a migration from the JSON on init so a fresh DB populated from JSON matches the canonical set.
+- [ ] **🟡 P2** Document the `MAX_SEMANTIC_SCAN_ENTRIES` warning as part of the README troubleshooting section (currently only in `docs/TECHNICAL_DETAIL.md` Known limitations and in the warning itself). One paragraph: "if you see this log line, here's what it means and how to plan the ANN swap."
+- [ ] **🟡 P2** Add a "what's new" section to the README pointing to `docs/progress.md` so visitors know there's a session-by-session history.
+- [ ] **🟡 P2** `requirements.txt` / `requirements-dev.txt` should declare a maximum version for the embedding-sensitive packages (`sentence-transformers`, `torch`) so a `pip install --upgrade` doesn't silently change the threshold curve. Today only floors are declared.
 
-#### Step 7 — Update all internal references ✅
-- [x] Update `uvicorn.run()` call in `main.py` → `"src.proxy.main:app"`
-- [x] Test imports unchanged (`from proxy.… import`) — resolved via pytest `pythonpath = ["src"]`
-- [x] `conftest.py` imports unchanged
-- [x] All 45 tests pass after restructuring *(now 68 after the 2026-08-23 review-fix round)*
+## 🟢 P3 — Nice-to-haves / stretch
 
-#### Step 8 — Commit the restructure
-- [x] Stage all changes ✅ done
-- [x] Commit: `"refactor: flatten repo structure, add src/ layout, rename docs"` ✅ done
-- [x] Verify git log is clean ✅ done
+- [ ] **🟢 P3** **Stretch — integrate with a sibling project.** Wire this proxy in front of the RAG or Agent project; report before/after cost numbers over a fixed prompt set; add a chart to whichever sibling's docs.
+- [ ] **🟢 P3** **Stretch — auto-tune threshold.** Add a `/eval/auto-tune` endpoint that sweeps a configurable threshold list, picks the F1-optimal value, and prints the borderline pairs that drove the choice. (Doesn't need to be production-safe; it's a developer aid.)
+- [ ] **🟢 P3** **Stretch — circuit breaker** in `llm_client.py`. Bounded retries cover demo scale; a paid-tier deployment with sustained upstream failure would benefit. Implementation sketch: `circuitpybreaker` or a 30-line hand-rolled sliding-window failure counter with OPEN/HALF_OPEN/CLOSED states.
+- [ ] **🟢 P3** **Stretch — ANN index swap.** When `len(cache_entries)` exceeds the warn threshold sustainably, replace `_semantic_lookup`'s numpy loop with FAISS / sqlite-vec / pgvector. The function signature doesn't change; only the body.
+- [ ] **🟢 P3** **Stretch — distributed coalescing.** `asyncio.Lock` is per-process. Multi-worker / multi-instance deployments need Redis SETNX (or equivalent) on `prompt_hash`. Note in a comment at the lock site.
+- [ ] **🟢 P3** **Stretch — streaming response caching.** v1 caches complete responses only; streaming introduces chunk-level identity and partial-write recovery problems that are real scope.
+- [ ] **🟢 P3** **Stretch — per-tenant rate limiting.** Out of scope for v1's "10–15 hobbyists" framing; matters if the proxy opens up more widely.
 
 ---
 
-## Documentation & Polish
+## ✅ Recently resolved (kept for context — see `progress.md` for details)
 
-- [x] **README.md** populated with:
-  - [x] Project title + one-line description
-  - [x] Problem statement (why this exists)
-  - [x] Architecture diagram (Mermaid)
-  - [x] Tech stack table
-  - [x] Quick start guide (`git clone` → `pip install` → `uvicorn` → test it, mock-mode first)
-  - [x] API reference (all endpoints with example curl commands)
-  - [x] Precision/recall table at each threshold (Phase 3 output)
-  - [x] Configuration reference (env vars table from `.env.example`)
-  - [ ] Screenshot/demo video of dashboard (once built)
-  - [x] Resume line
-- [x] **Commit Phase 2+3 to git** ← committed
-- [ ] Add `LICENSE` file (MIT) ← needs copyright owner name
-- [x] Add `Makefile` for common tasks
-
----
-
-## Stretch Goals (from PRD)
-
-- [ ] **Distributed mode** — multiple proxy instances sharing one cache backend without duplicate-write races
-- [ ] **Auto-tune threshold** — adjust similarity threshold based on observed hit-rate vs target false-positive rate
-- [ ] **Project integration** — wire proxy in front of Project 01 (RAG) or Project 02 (Agent) and report real cost savings
+- [x] Phase 0 — repo restructure (`src/` layout, root `.gitignore`, `pyproject.toml [project]`, `Makefile`, renamed docs).
+- [x] Phase 1 — proxy skeleton + exact-match cache.
+- [x] Phase 2 — semantic matching with BGE-small.
+- [x] Phase 3 — threshold validation; 31 labeled pairs; default 0.85 justified by F1=0.857.
+- [x] Phase 4 — TTL expiry + manual purge + bypass header.
+- [x] Phase 5 — backend metrics; dashboard HTML shipped (now missing — see P0 above).
+- [x] Phase 6 — deploy artifacts (Dockerfile, render.yaml, Procfile); Docker-verified locally.
+- [x] Phase 6.5 — 11-issue code-review fix round (51 → 68 tests).
+- [x] Phase 7 — BYOK production push (68 → 100 tests).
+- [x] Phase 7.1 — embedding-deserialization hardening + docs sync (100 → 105 tests).
+- [x] Phase 7.2 — upstream resilience (bounded retries, payload fidelity, error detail) (105 → 114 tests).
+- [x] CI pipeline (lint, test matrix py3.10/3.11/3.12 + Windows py3.11, docker-smoke, non-blocking pip-audit SARIF).
+- [x] `pip-audit` SARIF publishing to GitHub Security tab.
+- [x] `report.md` archived; `progress.md` is the source of truth.
+- [x] Admin auth on purge/sweep/dashboard; OpenAI-shaped upstream errors; model-aware cost estimation; provider allowlist; HMAC-derived user isolation; permanent `daily_metrics` rollup surviving 30-day retention prune.
 
 ---
 
-## Known Issues & Technical Debt
+## Known limitations (documented, accepted — see `design.md` §5 for the full list)
 
-| Issue | Severity | Where | Status |
-|-------|----------|-------|--------|
-| `__pycache__/` directories committed to git | Low | Root `.gitignore` | ✅ Resolved — `.gitignore` added, artifacts untracked |
-| `cache.db` binary committed to git | Low | Should be in `.gitignore` | ✅ Resolved — ignored |
-| `_semantic_lookup()` loads ALL non-expired entries into memory | Medium | `cache.py` `_semantic_lookup` — fine at demo scale but O(N) per request; warn-only guardrail past `MAX_SEMANTIC_SCAN_ENTRIES` | Open (documented limitation; swap in FAISS/sqlite-vec/pgvector at scale) |
-| `_rough_token_count` uses `len(text)//4` heuristic | Low | `llm_client.py` — `tiktoken` would be more accurate | Open (mock-mode only) |
-| Cost estimation hardcoded to gpt-3.5-turbo pricing | Low | `chat.py` | ✅ Resolved — model-aware `_estimate_cost` with DEFAULT_MODEL_PRICING + MODEL_PRICING override + prefix match (Phase 7.4) |
-| `__init__.py` package marker says "Phase 1" | Trivial | `src/proxy/__init__.py` | ✅ Resolved 2026-08-25 |
-| `_detach_log_references()` uses f-string SQL — safe here (SQL literal, not user input) but worth noting | Low | `cache.py` | Informational |
-| No upstream retry/circuit-breaker in `forward_to_llm` | Medium | `llm_client.py` | ✅ Resolved 2026-08-25 — bounded retries with exponential backoff (408/429/5xx + transport errors; `Retry-After` honored); `LLM_RETRY_MAX_ATTEMPTS` / `LLM_RETRY_BACKOFF_SECONDS`. Circuit breaker remains out of scope (single-instance demo scale) |
+These are deliberate scope decisions, not oversights:
+
+- Semantic scan is O(n) per request with a warn-only guardrail past `MAX_SEMANTIC_SCAN_ENTRIES` (default 5000).
+- Coalescing is single-process (`asyncio.Lock`); multi-worker needs a distributed lock.
+- No SQLite connection pool — WAL gives concurrent readers; pooling adds complexity without measured payoff.
+- Pairwise F1 in `THRESHOLD_ANALYSIS.md` is a conservative lower bound for live scan-max behavior.
+- BYOK identity depends on `USER_ID_PEPPER` (never rotate).
+- Free-tier deploys lose cache/history on redeploy (paid disk fixes).
+- No circuit breaker; retries cover demo scale.
+- No streaming response caching.
+- Per-user metrics only cover the raw 30-day window; the rollup is global by design.
