@@ -194,7 +194,9 @@ class TestUserScopingMigration:
 
         # Simulate the partial state: user_id present, CHECK still stale.
         conn = sqlite3.connect(legacy_db)
-        conn.execute("ALTER TABLE request_log ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local'")
+        conn.execute(
+            "ALTER TABLE request_log ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local'"
+        )
         conn.commit()
         conn.close()
 
