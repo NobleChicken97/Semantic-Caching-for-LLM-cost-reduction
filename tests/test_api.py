@@ -321,8 +321,12 @@ class TestUpstreamRetries:
         if attempts is not None:
             monkeypatch.setenv("LLM_RETRY_MAX_ATTEMPTS", attempts)
         from proxy.config import get_settings
+        from proxy.llm_client import reset_circuit_breakers
 
         get_settings.cache_clear()
+        # Fresh breaker state per test: failures recorded by one test must
+        # never leak into the next (the breaker registry is module-level).
+        reset_circuit_breakers()
         return get_settings
 
     @pytest.mark.asyncio
@@ -420,6 +424,154 @@ class TestUpstreamRetries:
                 await forward_to_llm(self.PAYLOAD, client=stub, api_key="sk-t")
             assert stub.calls == 1
             assert no_sleep == []
+        finally:
+            get_settings.cache_clear()
+
+
+class TestCircuitBreaker:
+    """Per-upstream fail-fast guard (CLOSED/OPEN/HALF_OPEN), unit level."""
+
+    @staticmethod
+    def _breaker(threshold=3, reset=0.0):
+        from proxy.llm_client import CircuitBreaker
+
+        return CircuitBreaker(threshold, reset)
+
+    def test_opens_after_threshold_consecutive_failures(self):
+        b = self._breaker(threshold=3, reset=30.0)
+        assert b.state == "CLOSED"
+        b.record_failure()
+        b.record_failure()
+        assert b.state == "CLOSED"
+        b.record_failure()
+        assert b.state == "OPEN"
+        assert not b.allow()
+
+    def test_success_resets_consecutive_counter(self):
+        b = self._breaker(threshold=2)
+        b.record_failure()
+        b.record_success()
+        b.record_failure()
+        assert b.state == "CLOSED"
+
+    def test_cooldown_admits_single_probe_then_reopens_on_failure(self, monkeypatch):
+        from proxy import llm_client as llm_module
+
+        clock = {"now": 1000.0}
+
+        class FakeTime:
+            @staticmethod
+            def monotonic():
+                return clock["now"]
+
+        monkeypatch.setattr(llm_module, "time", FakeTime)
+        b = self._breaker(threshold=1, reset=30.0)
+        b.record_failure()
+        assert not b.allow()  # OPEN, cooldown running
+        clock["now"] += 31.0  # cooldown elapses
+        assert b.allow()  # HALF_OPEN probe admitted
+        assert not b.allow()  # probe is single-flight
+        b.record_failure()  # probe failed -> fresh cooldown
+        assert not b.allow()
+        clock["now"] += 31.0
+        assert b.allow()  # probe admitted again after the new cooldown
+
+    def test_probe_success_closes_breaker(self):
+        b = self._breaker(threshold=1, reset=0.0)
+        b.record_failure()
+        assert b.allow()
+        b.record_success()
+        assert b.state == "CLOSED"
+        assert b.allow()
+
+    def test_threshold_zero_disables_breaker(self):
+        b = self._breaker(threshold=0)
+        for _ in range(10):
+            b.record_failure()
+        assert b.state == "DISABLED"
+        assert b.allow()
+
+    @pytest.mark.asyncio
+    async def test_forward_fails_fast_without_network_when_open(self, monkeypatch):
+        """After N exhausted failures the next forward raises before any I/O."""
+        import httpx
+
+        get_settings = self._real_mode(monkeypatch, attempts="1")
+        try:
+            from proxy.llm_client import CircuitOpenError, forward_to_llm
+
+            stub = self._stub([(503, {})] * 5)
+            for _ in range(5):
+                with pytest.raises(httpx.HTTPStatusError):
+                    await forward_to_llm(self.PAYLOAD, client=stub, api_key="sk-t")
+            assert stub.calls == 5
+            with pytest.raises(CircuitOpenError):
+                await forward_to_llm(self.PAYLOAD, client=stub, api_key="sk-t")
+            assert stub.calls == 5  # OPEN: zero additional network calls
+        finally:
+            get_settings.cache_clear()
+
+    @pytest.mark.asyncio
+    async def test_forward_ignores_non_retryable_4xx_for_breaker(self, monkeypatch):
+        """A 401 storm is the caller's fault — it must not open the circuit."""
+        import httpx
+
+        get_settings = self._real_mode(monkeypatch, attempts="1")
+        try:
+            from proxy.llm_client import forward_to_llm
+
+            stub = self._stub([(401, {"error": "bad key"})] * 10)
+            for _ in range(10):
+                with pytest.raises(httpx.HTTPStatusError):
+                    await forward_to_llm(self.PAYLOAD, client=stub, api_key="sk-bad")
+
+            ok = self._stub([(200, self._ok_payload())])
+            body, _lat = await forward_to_llm(self.PAYLOAD, client=ok, api_key="sk-t")
+            assert body["id"] == "chatcmpl-ok"  # still CLOSED, request went out
+        finally:
+            get_settings.cache_clear()
+
+    # Reuse TestUpstreamRetries' helpers (plain-staticmethod aliases — no
+    # subclassing, which would re-collect the base class's tests).
+    _real_mode = TestUpstreamRetries._real_mode
+    _stub = staticmethod(TestUpstreamRetries._stub)
+    _ok_payload = staticmethod(TestUpstreamRetries._ok_payload)
+    PAYLOAD = TestUpstreamRetries.PAYLOAD
+
+
+class TestCircuitBreakerEndpoint:
+    @pytest.mark.asyncio
+    async def test_open_circuit_returns_503_openai_shape(self, client, monkeypatch):
+        """Circuit-open rejections surface as OpenAI-shaped 503s, logged not cached."""
+        monkeypatch.setenv("MOCK_LLM", "false")
+        from proxy import llm_client as llm_module
+        from proxy.config import get_settings
+
+        get_settings.cache_clear()
+        try:
+            breaker = llm_module.CircuitBreaker(1, 30.0)
+            breaker.record_failure()  # -> OPEN
+            monkeypatch.setattr(
+                llm_module,
+                "_breakers",
+                {"https://api.openai.com/v1": breaker},
+            )
+
+            resp = await client.post(
+                "/v1/chat/completions",
+                headers={"Authorization": "Bearer sk-tester"},
+                json=PROMPT_FRANCE,
+            )
+            assert resp.status_code == 503
+            data = resp.json()
+            assert data["error"]["code"] == 503
+            assert data["error"]["type"] == "upstream_circuit_open"
+
+            # The rejection is logged with zeroed cost/tokens, never cached.
+            logs = (await client.get("/logs/recent")).json()["logs"]
+            assert [entry["outcome"] for entry in logs] == ["ERROR"]
+            entries = (await client.get("/cache/entries")).json()["entries"]
+            assert entries == []
         finally:
             get_settings.cache_clear()
 

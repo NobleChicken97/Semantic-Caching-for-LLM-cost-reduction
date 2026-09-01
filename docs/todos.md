@@ -1,6 +1,6 @@
 # TODO — Semantic Caching Layer for LLM Cost Reduction
 
-> **Last updated:** 2026-09-01 (session 4 — `/eval/auto-tune` shipped, P2 polish batch done)
+> **Last updated:** 2026-09-01 (session 5 — circuit breaker shipped, LICENSE added, dataset drift guard)
 > **Status legend:** 🔴 = known bug · 🟡 = planned enhancement · 🟢 = nice-to-have / stretch · ✅ = done
 > **Priority:** 🔴 P0 (blocks demo) · 🟠 P1 (blocks live deploy / key stories) · 🟡 P2 (polish) · 🟢 P3 (whenever)
 
@@ -28,7 +28,7 @@ The two lost directories are restored, the working tree is verified end-to-end (
   - With two real keys (Alice via OpenRouter free model, Bob via Gemini flash), confirm: MISS → HIT for Alice; MISS → HIT for Bob (different `user_id`s in `/cache/entries`); keyless → 401; non-allowlisted `X-LLM-Base-URL` → 400; dashboard shows both users accumulating independently.
   - Acceptance: public URL `/health` returns 200; the BYOK runbook's 4 checks all pass.
 - [x] **🟠 P1** Re-measure threshold curve against current BGE weights on the HF Hub. ✅ Done 2026-09-01 session 3: `python scripts/run_sweep.py` reproduced the documented curve exactly — F1 still peaks at the default **0.85 (F1=0.8571)**, borderline pairs unchanged (antonym pair 0.8643, code pair 0.8449). No re-pin or re-justification needed.
-- [ ] **🟠 P1** Add the `LICENSE` file (MIT) — pending copyright-owner name decision from you.
+- [x] **🟠 P1** Added the `LICENSE` file (MIT, "Copyright (c) 2026 Arpan Goyal") — 2026-09-01 session 5. The name was taken from the git author identity; if you want a different legal name or the GitHub handle, it's a one-line edit.
 - [ ] **🟠 P1** Decide the fate of the OneDrive remnant copy (`C:\Users\arpan.ARPAN\OneDrive\Desktop\projects\Semantic caching layer for LLM cost reduction`): it holds the only local git history (11 commits, now functional after HEAD/config repair) — keep until the Desktop repo has been re-synced from remote and verified, then archive/delete to avoid future confusion.
 
 ## 🟡 P2 — Polish
@@ -46,7 +46,7 @@ The two lost directories are restored, the working tree is verified end-to-end (
 
 - [ ] **🟢 P3** **Stretch — integrate with a sibling project.** Wire this proxy in front of the RAG or Agent project; report before/after cost numbers over a fixed prompt set; add a chart to whichever sibling's docs.
 - [x] **🟢 P3** **Auto-tune threshold — DONE (2026-09-01 session 4).** `POST /eval/auto-tune`: sweeps a configurable threshold grid (documented default when omitted), picks the F1-optimal value (ties → lower threshold, favoring recall), and returns the borderline labeled pairs (±0.03 of the pick, nearest first, max 10). Admin-gated like the sweep; 9 new tests (unit + API), live-verified picking 0.85 @ F1 0.8571 on the seeded set.
-- [ ] **🟢 P3** **Stretch — circuit breaker** in `llm_client.py`. Bounded retries cover demo scale; a paid-tier deployment with sustained upstream failure would benefit. Implementation sketch: `circuitpybreaker` or a 30-line hand-rolled sliding-window failure counter with OPEN/HALF_OPEN/CLOSED states.
+- [x] **🟢 P3** **Circuit breaker — DONE (2026-09-01 session 5).** Hand-rolled `CircuitBreaker` in `llm_client.py` (no new dependency): per-upstream CLOSED/OPEN/HALF_OPEN, opens after `LLM_BREAKER_FAILURE_THRESHOLD` (default 5) consecutive exhausted failures, fails fast with an OpenAI-shaped 503 (`upstream_circuit_open`) for `LLM_BREAKER_RESET_SECONDS` (default 30 s), then admits one single-flight probe. Only retryable-class failures count; `0` disables. 9 new tests → 132 total.
 - [ ] **🟢 P3** **Stretch — ANN index swap.** When `len(cache_entries)` exceeds the warn threshold sustainably, replace `_semantic_lookup`'s numpy loop with FAISS / sqlite-vec / pgvector. The function signature doesn't change; only the body.
 - [ ] **🟢 P3** **Stretch — distributed coalescing.** `asyncio.Lock` is per-process. Multi-worker / multi-instance deployments need Redis SETNX (or equivalent) on `prompt_hash`. Note in a comment at the lock site.
 - [ ] **🟢 P3** **Stretch — streaming response caching.** v1 caches complete responses only; streaming introduces chunk-level identity and partial-write recovery problems that are real scope.
@@ -56,6 +56,7 @@ The two lost directories are restored, the working tree is verified end-to-end (
 
 ## ✅ Recently resolved (kept for context — see `progress.md` for details)
 
+- [x] **Session 5 (2026-09-01):** circuit breaker shipped (`llm_client.py`, per-upstream CLOSED/OPEN/HALF_OPEN, env-tunable, disable-able; OpenAI-shaped 503 contract); `LICENSE` (MIT); seed-data ↔ JSON drift-guard test; docs de-staled (`design.md` §4.10 + limitations list, README error note + config table); 132 tests green.
 - [x] **Session 4 (2026-09-01):** `/eval/auto-tune` shipped (app v0.5.0, 9 new tests → 123 total, live-verified); `ruff format` applied repo-wide + format check gated in CI; README Troubleshooting + What's-new sections; requirements upper bounds for torch/sentence-transformers; test-count 114→123 synced across README/LAUNCH_CHECKLIST.
 - [x] **P0 recovery complete (2026-09-01 session 3):** `routes/` + `static/index.html` restored (content-identical to remote), index repaired via `git add -A`, committed `f212ec2` and pushed — remote and local back in lockstep. Verified: 114/114 tests, uvicorn smoke (health/dashboard/MISS→HIT/metrics).
 - [x] **Threshold sweep re-verified (2026-09-01 session 3):** F1 still peaks at 0.85 against current HF Hub BGE weights — curve byte-for-byte matches `THRESHOLD_ANALYSIS.md`.
@@ -88,6 +89,6 @@ These are deliberate scope decisions, not oversights:
 - Pairwise F1 in `THRESHOLD_ANALYSIS.md` is a conservative lower bound for live scan-max behavior.
 - BYOK identity depends on `USER_ID_PEPPER` (never rotate).
 - Free-tier deploys lose cache/history on redeploy (paid disk fixes).
-- No circuit breaker; retries cover demo scale.
+- Circuit breaker is per-process (like coalescing); multi-instance deployments get independent breakers per instance.
 - No streaming response caching.
 - Per-user metrics only cover the raw 30-day window; the rollup is global by design.

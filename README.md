@@ -72,7 +72,7 @@ Precision/recall across thresholds against a 31-pair labeled dataset (full analy
 | Embeddings | sentence-transformers · `BAAI/bge-small-en-v1.5` (CPU) |
 | Vector math | numpy (dot-product cosine on unit vectors) |
 | Storage | SQLite (WAL mode, foreign keys ON) |
-| Testing | pytest + pytest-asyncio (123 tests) |
+| Testing | pytest + pytest-asyncio (132 tests) |
 
 ---
 
@@ -221,12 +221,15 @@ All settings are environment variables (see [.env.example](.env.example)):
 | `MAX_SEMANTIC_SCAN_ENTRIES` | `5000` | Warn once per process when the semantic scan exceeds this many entries (see Known limitations) |
 | `LLM_RETRY_MAX_ATTEMPTS` | `3` | Total upstream attempts incl. the first; transient failures (408/429/5xx, connection errors) are retried with backoff. `1` disables retries |
 | `LLM_RETRY_BACKOFF_SECONDS` | `0.5` | Base for exponential retry backoff (capped at 8s); a provider `Retry-After` header wins over computed backoff |
+| `LLM_BREAKER_FAILURE_THRESHOLD` | `5` | Per-upstream circuit breaker: after this many **consecutive** exhausted-failure forwards (transport errors, 408/429, 5xx) to the same base URL, requests fail fast with an OpenAI-shaped 503 until the cooldown elapses. Any success closes it again; `0` disables |
+| `LLM_BREAKER_RESET_SECONDS` | `30` | Fail-fast cooldown; after it elapses exactly one HALF_OPEN probe request goes upstream — success closes the breaker, failure restarts the cooldown |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8000` | Bind port |
 
 > **Note:** error responses from upstream LLM failures are returned in OpenAI's shape —
 > `{"error": {"message", "type", "code"}}` with the upstream status passed through
-> (`502` for connection failures). Failed calls are logged with outcome `"ERROR"`
+> (`502` for connection failures, `503` `upstream_circuit_open` while the circuit
+> breaker is OPEN). Failed calls are logged with outcome `"ERROR"`
 > and zeroed cost/token counts, and never enter the cache.
 
 ---
@@ -294,7 +297,7 @@ Caveats worth knowing:
 | Job | What it proves |
 |-----|----------------|
 | **Lint** | `ruff` clean across `src/`, `tests/`, `scripts/` |
-| **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 123-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
+| **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 132-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
 | **Docker smoke** | Builds the production image with GHA layer caching, asserts `torch.cuda.is_available()` is False inside it, then runs the same black-box smoke suite against the containerized server |
 | **Security audit** (non-blocking) | `pip-audit` over `requirements.txt` on every push/PR; findings are published as persistent code-scanning alerts in the **Security tab** (nothing is suppressed or ignored), while transitive-CVE noise from the torch/fastapi ecosystem doesn't gate routine PRs. Dependabot version-bump PRs for pip are off (the `>=` floors make them cosmetic); CVE-driven Dependabot security PRs remain active independently |
 
@@ -311,7 +314,7 @@ Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the 
 │   ├── eval.py          Threshold sweep: batch embed → classify → P/R/F1
 │   ├── database.py      SQLite schema + 31 labeled test pairs
 │   └── ...
-├── tests/               123 tests (unit + integration)
+├── tests/               132 tests (unit + integration)
 ├── scripts/             Sweep runner, pair checker, JSON exporter, CI smoke suite
 │   ├── .github/         CI workflow (lint / test matrix / docker smoke / audit) + Dependabot
 ├── data/labeled_test_pairs.json   Reproducible validation dataset

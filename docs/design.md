@@ -138,11 +138,11 @@
 - **Alternative:** Pass the upstream URL through verbatim.
 - **Why this won:** A free-form URL turns the proxy into an open relay and an SSRF-shaped hole. Allowlist + canonicalization keeps both the deployment simple (OpenRouter today, more tomorrow) and the security model clear.
 
-### 4.10 Bounded upstream retries, no circuit breaker
+### 4.10 Bounded upstream retries + per-upstream circuit breaker
 
-- **Chosen:** `_post_with_retries` retries 408/429/5xx + transport errors with exponential backoff from `LLM_RETRY_BACKOFF_SECONDS` (default 0.5 s, capped at 8 s). A numeric `Retry-After` header wins; waits > 30 s fail fast (daily-cap 429s).
-- **Alternative:** Unbounded retries; a full circuit breaker; separate retry policies per provider.
-- **Why this won:** Retrying only what the server explicitly did NOT succeed on (4xx 408/429 + 5xx) keeps the no-double-billing guarantee. Bounded attempts keep a misbehaving upstream from holding the coalescing lock indefinitely. A circuit breaker is the right next step at scale, but the complexity isn't earned at single-instance demo scale.
+- **Chosen:** `_post_with_retries` retries 408/429/5xx + transport errors with exponential backoff from `LLM_RETRY_BACKOFF_SECONDS` (default 0.5 s, capped at 8 s). A numeric `Retry-After` header wins; waits > 30 s fail fast (daily-cap 429s). On top of that, a hand-rolled `CircuitBreaker` (per upstream base URL) opens after `LLM_BREAKER_FAILURE_THRESHOLD` (default 5) **consecutive** exhausted failures and fails fast with an OpenAI-shaped 503 for `LLM_BREAKER_RESET_SECONDS` (default 30 s); one HALF_OPEN probe then goes through — success closes, failure restarts the cooldown. Only retryable-class outcomes count as failures (a 401 storm is the caller's problem, not the provider's).
+- **Alternative:** Unbounded retries; no breaker (the original v1 posture); `circuitpybreaker` dependency.
+- **Why this won:** Retrying only what the server explicitly did NOT succeed on (4xx 408/429 + 5xx) keeps the no-double-billing guarantee. Retries bound the cost of ONE bad call; the breaker bounds the cost of a bad upstream — ~30 lines, zero dependencies, and one breaker per allowlisted base URL so a failure storm on one provider never blocks another. Set `LLM_BREAKER_FAILURE_THRESHOLD=0` to opt out.
 
 ### 4.11 Model-aware cost estimation with prefix inheritance
 
@@ -193,10 +193,8 @@ These are documented, accepted decisions — not oversights:
 7. **BYOK identity depends on `USER_ID_PEPPER`** (never rotate, same as `ADMIN_TOKEN`).
 8. **Persistence depends on a disk.** `render.yaml` ships a commented persistent-disk block (`/var/data` + `CACHE_DB_PATH=/var/data/cache.db`); the schema migrates itself wherever the file lives.
 9. **Free-tier deployments lose cache/history on redeploy.** Acceptable for demo; paid plan with disk fixes it.
-10. **No circuit breaker.** Bounded retries cover single-instance demo scale; sustained failure on a paid-tier deployment would benefit from a circuit breaker.
+10. **The circuit breaker is per-process.** Like coalescing, breaker state lives in one uvicorn worker's memory; multi-instance deployments get independent breakers per instance (acceptable — each still protects its own callers).
 11. **No streaming response caching.** v1 caches complete responses only.
-12. **The `/v1/chat/completions` endpoint will not start in the local Desktop tree.** `src/proxy/main.py` imports `from .routes.chat import router as chat_router`, but `src/proxy/routes/chat.py` is missing — lost in a folder move out of OneDrive (root cause verified 2026-09-01; see `progress.md`). The file exists byte-identical on the GitHub remote and the OneDrive remnant copy; restore with `git checkout origin/main -- src/proxy/routes`. The canonical tree passes 114/114 tests including this module.
-13. **Dashboard 500s on click in the local Desktop tree.** `src/proxy/static/index.html` is missing (same folder-move loss); `main.py` returns `FileResponse(STATIC_DIR / "index.html")`. Restore with `git checkout origin/main -- src/proxy/static` (verified byte-identical on remote).
 
 ## 6. Integration notes (external dependencies)
 

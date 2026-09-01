@@ -151,6 +151,41 @@ class TestSeededDataset:
         assert positives >= 10
         assert negatives >= 10
 
+    def test_seed_matches_published_json_dataset(self):
+        """Drift guard: seed_test_pairs() and data/labeled_test_pairs.json agree.
+
+        The JSON is the reproducibility artifact consumers (and the README
+        table) read; the inline seed is the source of truth. If this test
+        fails, one of them changed without the other — re-run
+        scripts/export_test_pairs.py.
+        """
+        import json
+        from pathlib import Path
+
+        from proxy.database import get_connection, seed_test_pairs
+
+        seed_test_pairs()
+        conn = get_connection()
+        try:
+            rows = conn.execute(
+                "SELECT pair_id, prompt_a, prompt_b, should_match "
+                "FROM labeled_test_pairs ORDER BY pair_id"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        json_path = (
+            Path(__file__).resolve().parent.parent / "data" / "labeled_test_pairs.json"
+        )
+        published = json.loads(json_path.read_text(encoding="utf-8"))
+
+        assert published["count"] == len(rows)
+        for row, pair in zip(rows, published["pairs"], strict=False):
+            assert pair["pair_id"] == row["pair_id"]
+            assert pair["prompt_a"] == row["prompt_a"]
+            assert pair["prompt_b"] == row["prompt_b"]
+            assert pair["should_match"] is bool(row["should_match"])
+
 
 class TestAutoTune:
     def test_empty_db_returns_null_best(self):

@@ -15,6 +15,31 @@
 
 ---
 
+## 2026-09-01 (session 5) — Circuit breaker shipped, LICENSE added, drift guard
+
+Context: continued from session 4 with CI verified green on all three prior pushes (checked via the GitHub API — the new `ruff format --check` gate passed). Scope: the circuit breaker stretch item, the LICENSE P1, and the dataset drift-guard P2. Test count 123 → **132**.
+
+**What shipped**
+
+1. **Circuit breaker (P3 stretch — the last big locally-implementable stretch item):**
+   - `llm_client.py`: hand-rolled `CircuitBreaker` (zero new dependencies — the todos' "30-line" sketch). Per **upstream base URL** (registry dict): a failure storm on one provider never blocks another. States: CLOSED (normal) → OPEN after `LLM_BREAKER_FAILURE_THRESHOLD` (default 5) **consecutive** exhausted failures → after `LLM_BREAKER_RESET_SECONDS` (default 30 s) exactly one single-flight HALF_OPEN probe is admitted (success closes; failure restarts the cooldown). `threshold=0` disables.
+   - Failure definition: only retryable-class outcomes (transport errors, 408/429, 5xx) count — a 401 storm is the caller's fault and must not open the circuit for everyone.
+   - New settings `LLM_BREAKER_FAILURE_THRESHOLD` / `LLM_BREAKER_RESET_SECONDS` (+ `.env.example`, README config table). `reset_circuit_breakers()` helper for settings changes/tests.
+   - `chat.py`: `CircuitOpenError` → OpenAI-shaped **503** `upstream_circuit_open` at both forward call sites (BYPASS + MISS paths), logged as `ERROR` with zeroed cost/tokens, never cached. 503 (not 502) because the proxy is deliberately shedding load.
+   - 9 new tests: 5 unit (state machine incl. a fake-clock probe/reopen test), 2 through `forward_to_llm` (opens + fails fast with zero extra network calls; 401-storm doesn't count), 1 API-level (503 shape + error log + no cache entry). `TestUpstreamRetries._real_mode` now calls `reset_circuit_breakers()` so failures can't leak between tests (module-level registry).
+2. **`LICENSE` (P1):** MIT, `Copyright (c) 2026 Arpan Goyal` — name taken from the git author identity; flagged to the owner as a one-line change if a different legal name is wanted.
+3. **Drift guard (P2):** `test_seed_matches_published_json_dataset` asserts `seed_test_pairs()` and `data/labeled_test_pairs.json` agree row-for-row (count, prompts, labels) — closes the "inline seed vs published artifact" divergence risk; re-run `scripts/export_test_pairs.py` if it ever fires.
+4. **Docs de-staled:** `design.md` §4.10 rewritten (was "no circuit breaker") + limitations list updated (breaker now exists but is per-process; removed the two resolved OneDrive-missing-file items); README error-contract note now mentions the 503 circuit-open shape; test counts synced 123 → 132 across README + LAUNCH_CHECKLIST.
+
+**Bugs found + root cause + fix (tests caught real semantics issues)**
+- `CircuitBreaker.state` reports **HALF_OPEN** the moment the cooldown has elapsed (not only while a probe is in flight) — initial test expectations assumed "OPEN" until probed. The code was right (state is a function of clock position, admission is a function of the single-flight flag); tests corrected, with the fake-clock test now pinning the real semantics.
+- `_stub` staticmethod aliasing across test classes needed `staticmethod(...)` re-wrapping (plain alias re-bound `self`); fixed in the test.
+
+**Deferred (unchanged)**
+- tiktoken token counting and schema-from-JSON export remain owner calls; remaining stretch items (ANN swap, distributed coalescing, streaming cache, per-tenant rate limiting, sibling-project integration) need infra or scope decisions.
+
+---
+
 ## 2026-09-01 (session 4) — `/eval/auto-tune` shipped + P2 polish batch
 
 Context: first real feature session after the P0 recovery. Scope chosen from `todos.md`: the auto-tune stretch item (highest-value remaining development) plus four P2 polish items that were zero-ambiguity. Everything verified before commit; full suite green after each change.

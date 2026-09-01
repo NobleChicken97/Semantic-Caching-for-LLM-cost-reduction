@@ -5,6 +5,11 @@ errors) are retried with exponential backoff, bounded by
 LLM_RETRY_MAX_ATTEMPTS / LLM_RETRY_BACKOFF_SECONDS. A numeric Retry-After
 header from the server overrides computed backoff; waits LONGER than the
 30 s in-request budget fail fast instead of sleeping (e.g. daily-cap 429s).
+
+On top of retries, a per-upstream circuit breaker (CLOSED/OPEN/HALF_OPEN,
+LLM_BREAKER_*) fails fast once a sustained failure pattern is detected —
+retries bound the cost of ONE bad call; the breaker bounds the cost of a
+bad upstream.
 """
 
 from __future__ import annotations
@@ -106,6 +111,114 @@ async def _post_with_retries(
     raise RuntimeError("retry loop exited without returning")  # pragma: no cover
 
 
+# ---------------------------------------------------------------------------
+# Circuit breaker (per-upstream fail-fast guard)
+# ---------------------------------------------------------------------------
+
+
+class CircuitOpenError(RuntimeError):
+    """Raised with no network call made while a breaker is OPEN.
+
+    chat.py maps this to an OpenAI-shaped 503 so callers see the same error
+    contract as every other upstream failure.
+    """
+
+
+class CircuitBreaker:
+    """CLOSED → OPEN → HALF_OPEN guard on consecutive upstream failures.
+
+    A "failure" is a forward attempt that exhausted its retries and still
+    ended in a retryable-class outcome (transport error, 408/429, 5xx) —
+    the sustained-sickness signal that bounded retries alone never
+    escalate. Any success resets the counter and CLOSES the breaker.
+
+    While OPEN, callers fail fast with :class:`CircuitOpenError` until
+    ``reset_seconds`` elapse; the next request then becomes a HALF_OPEN
+    probe (single-flight). Probe success CLOSES the breaker; probe failure
+    re-OPENs with a fresh cooldown. ``failure_threshold`` <= 0 disables the
+    breaker entirely (opt-out for deployments that never want fail-fast).
+
+    Single event loop, plain attributes: no locking needed beyond the
+    probe flag, which only bounds concurrent probes (worst case a couple
+    slip through — harmless, the state machine stays consistent).
+    """
+
+    def __init__(self, failure_threshold: int, reset_seconds: float) -> None:
+        self.failure_threshold = failure_threshold
+        self.reset_seconds = max(0.0, reset_seconds)
+        self._consecutive_failures = 0
+        self._opened_at: float | None = None
+        self._probe_in_flight = False
+
+    def _cooldown_elapsed(self) -> bool:
+        assert self._opened_at is not None
+        return time.monotonic() - self._opened_at >= self.reset_seconds
+
+    @property
+    def state(self) -> str:
+        if self.failure_threshold <= 0:
+            return "DISABLED"
+        if self._opened_at is None:
+            return "CLOSED"
+        return "HALF_OPEN" if self._cooldown_elapsed() else "OPEN"
+
+    def allow(self) -> bool:
+        """Whether a request may go upstream right now."""
+        if self.failure_threshold <= 0:
+            return True
+        if self._opened_at is None:
+            return True
+        if self._cooldown_elapsed() and not self._probe_in_flight:
+            self._probe_in_flight = True
+            return True
+        return False
+
+    def record_success(self) -> None:
+        self._consecutive_failures = 0
+        self._opened_at = None
+        self._probe_in_flight = False
+
+    def record_failure(self) -> None:
+        if self.failure_threshold <= 0:
+            return
+        if self._opened_at is not None:
+            # Failed HALF_OPEN probe — restart the cooldown.
+            self._probe_in_flight = False
+            self._opened_at = time.monotonic()
+            return
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self.failure_threshold:
+            self._opened_at = time.monotonic()
+            logger.warning(
+                "Circuit OPEN for upstream after %d consecutive failures — "
+                "failing fast for %.0fs",
+                self._consecutive_failures,
+                self.reset_seconds,
+            )
+
+
+# One breaker per allowlisted upstream base URL: a failure storm on one
+# provider must not block callers whose keys point at another.
+_breakers: dict[str, CircuitBreaker] = {}
+
+
+def reset_circuit_breakers() -> None:
+    """Drop all breaker state (settings changes, tests)."""
+    _breakers.clear()
+
+
+def _breaker_for(base_url: str) -> CircuitBreaker:
+    breaker = _breakers.get(base_url)
+    if breaker is None:
+        cfg = get_settings()
+        breaker = CircuitBreaker(
+            cfg.llm_breaker_failure_threshold,
+            cfg.llm_breaker_reset_seconds,
+        )
+        _breakers[base_url] = breaker
+    return breaker
+
+
 async def forward_to_llm(
     request_body: dict[str, Any],
     *,
@@ -152,32 +265,53 @@ async def forward_to_llm(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    url = f"{(base_url or cfg.llm_api_base_url).rstrip('/')}/chat/completions"
+    upstream = (base_url or cfg.llm_api_base_url).rstrip("/")
+    url = f"{upstream}/chat/completions"
     max_attempts = max(1, cfg.llm_retry_max_attempts)
     backoff_seconds = max(0.0, cfg.llm_retry_backoff_seconds)
 
-    start = time.perf_counter()
-    if client is not None:
-        resp = await _post_with_retries(
-            client,
-            url,
-            request_body,
-            headers,
-            max_attempts=max_attempts,
-            backoff_seconds=backoff_seconds,
+    breaker = _breaker_for(upstream)
+    if not breaker.allow():
+        raise CircuitOpenError(
+            f"circuit OPEN for {upstream} — failing fast after repeated "
+            "upstream failures; cooldown in progress"
         )
-        return resp.json(), time.perf_counter() - start
 
-    async with httpx.AsyncClient(timeout=120.0) as own_client:
-        resp = await _post_with_retries(
-            own_client,
-            url,
-            request_body,
-            headers,
-            max_attempts=max_attempts,
-            backoff_seconds=backoff_seconds,
-        )
-        return resp.json(), time.perf_counter() - start
+    start = time.perf_counter()
+    try:
+        if client is not None:
+            resp = await _post_with_retries(
+                client,
+                url,
+                request_body,
+                headers,
+                max_attempts=max_attempts,
+                backoff_seconds=backoff_seconds,
+            )
+        else:
+            async with httpx.AsyncClient(timeout=120.0) as own_client:
+                resp = await _post_with_retries(
+                    own_client,
+                    url,
+                    request_body,
+                    headers,
+                    max_attempts=max_attempts,
+                    backoff_seconds=backoff_seconds,
+                )
+    except httpx.HTTPStatusError as exc:
+        # Only retryable-class outcomes speak to upstream health. A 401
+        # storm is the caller's problem, not the provider's — it must not
+        # open the circuit for everyone else.
+        if exc.response.status_code in _RETRYABLE_STATUSES or (
+            exc.response.status_code >= 500
+        ):
+            breaker.record_failure()
+        raise
+    except httpx.TransportError:
+        breaker.record_failure()
+        raise
+    breaker.record_success()
+    return resp.json(), time.perf_counter() - start
 
 
 def _mock_response(request_body: dict[str, Any]) -> dict[str, Any]:
