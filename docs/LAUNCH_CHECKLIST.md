@@ -242,7 +242,7 @@ Provider: Optional body field "provider": "openrouter" | "gemini"
           (or header X-LLM-Base-URL with the same values)
 Rules:    Bring your own free key — the proxy never sees spend from anyone else,
           and nobody can read anyone else's cached answers.
-          Heads-up: OpenRouter free keys = 50 req/day (1000 after a one-time
+          Heads-up: OpenRouter free = 50 free-model req/day per ACCOUNT, shared across all your keys, resets UTC midnight (1000 after a one-time
           $10 credit on YOUR account). Some free endpoints may log prompts.
 ```
 
@@ -263,7 +263,7 @@ Rules:    Bring your own free key — the proxy never sees spend from anyone els
 |---|---|
 | Render free instance | 512 MB RAM · 0.1 CPU · sleeps after **15 min idle** · cold start **30–60 s** · no disks |
 | Render hours | 750 instance-hours/workspace/month (one sleeping service fits easily) |
-| OpenRouter free | 20 RPM · **50 req/day** (<$10 lifetime credits) → 1,000/day after one-time $10 · roster rotates · some endpoints may log prompts |
+| OpenRouter free | 20 RPM · **50 free-model req/day — per ACCOUNT, shared across ALL keys** (a fresh key does NOT reset the bucket; resets at UTC midnight) · 1,000/day after one-time $10 · roster rotates · some endpoints may log prompts |
 | Gemini free | Indefinite, no card · Flash-class ≈ 10 RPM / low hundreds RPD per project · free-tier data may train Google products · **auth-key migration deadline Sept 2026** |
 
 **Total launch cost: $0.** First meaningful upgrade, if ever: Render Starter $7/mo for always-on + persistence.
