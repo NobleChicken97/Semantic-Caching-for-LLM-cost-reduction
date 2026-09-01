@@ -2,7 +2,7 @@
 
 > **Generated:** 2026-08-23 · Updated 2026-08-25: all commands are PowerShell-native
 > (`curl.exe` + JSON breaks on Windows PowerShell 5.x — PS strips inner quotes → 422).
-> Code status: **Phase 7 + hardening/retry rounds shipped & pushed** (`0f8f7d7`), CI green, 132 tests passing.
+> Code status: **Phases 1–7 + auto-tune + circuit breaker + tiktoken shipped & pushed**, CI green, 135 tests passing.
 > Everything below is *human-only* work: accounts, clicks, secrets, invites.
 
 ---
@@ -23,7 +23,7 @@
 - [ ] **A1. Sync + test locally**
   ```powershell
   git pull origin main
-  python -m pytest tests/ -q        # expect: 132 passed
+  python -m pytest tests/ -q        # expect: 135 passed
   ```
 - [ ] **A2. (Recommended) Dry-run BYOK without spending anything — Windows/PowerShell edition**
 

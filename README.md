@@ -6,7 +6,7 @@ A drop-in caching proxy that sits in front of any OpenAI-compatible LLM API, rec
 
 > **Resume line:** Built a semantic caching proxy for LLM APIs using embedding similarity matching, with a tuned threshold validated against a labeled test set, cutting redundant API spend with live hit-rate and cost-saved tracking.
 
-> **What's new:** there's a session-by-session build log in [`docs/progress.md`](docs/progress.md) — every phase, decision, bug (with root cause), and measured number. The headline metric of that log right now: the threshold default of 0.85 re-validated against current embedding weights (F1 still peaks there), and a new [`/eval/auto-tune`](#post-evalauto-tune) endpoint that re-derives the pick on demand.
+> **What's new:** there's a session-by-session build log in [`docs/progress.md`](docs/progress.md) — every phase, decision, bug (with root cause), and measured number. Recent highlights: [`/eval/auto-tune`](#post-evalauto-tune) (re-derives the threshold pick with borderline-pair evidence), a per-upstream circuit breaker (fail-fast 503s when an upstream is sick), tiktoken-accurate token accounting, and a re-validated 0.85 threshold (F1 0.8571 on the labeled set).
 
 ---
 
@@ -72,7 +72,7 @@ Precision/recall across thresholds against a 31-pair labeled dataset (full analy
 | Embeddings | sentence-transformers · `BAAI/bge-small-en-v1.5` (CPU) |
 | Vector math | numpy (dot-product cosine on unit vectors) |
 | Storage | SQLite (WAL mode, foreign keys ON) |
-| Testing | pytest + pytest-asyncio (132 tests) |
+| Testing | pytest + pytest-asyncio (135 tests) |
 
 ---
 
@@ -297,7 +297,7 @@ Caveats worth knowing:
 | Job | What it proves |
 |-----|----------------|
 | **Lint** | `ruff` clean across `src/`, `tests/`, `scripts/` |
-| **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 132-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
+| **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 135-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
 | **Docker smoke** | Builds the production image with GHA layer caching, asserts `torch.cuda.is_available()` is False inside it, then runs the same black-box smoke suite against the containerized server |
 | **Security audit** (non-blocking) | `pip-audit` over `requirements.txt` on every push/PR; findings are published as persistent code-scanning alerts in the **Security tab** (nothing is suppressed or ignored), while transitive-CVE noise from the torch/fastapi ecosystem doesn't gate routine PRs. Dependabot version-bump PRs for pip are off (the `>=` floors make them cosmetic); CVE-driven Dependabot security PRs remain active independently |
 
@@ -314,7 +314,7 @@ Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the 
 │   ├── eval.py          Threshold sweep: batch embed → classify → P/R/F1
 │   ├── database.py      SQLite schema + 31 labeled test pairs
 │   └── ...
-├── tests/               132 tests (unit + integration)
+├── tests/               135 tests (unit + integration)
 ├── scripts/             Sweep runner, pair checker, JSON exporter, CI smoke suite
 │   ├── .github/         CI workflow (lint / test matrix / docker smoke / audit) + Dependabot
 ├── data/labeled_test_pairs.json   Reproducible validation dataset

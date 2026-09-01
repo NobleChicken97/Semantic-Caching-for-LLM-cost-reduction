@@ -539,6 +539,35 @@ class TestCircuitBreaker:
     PAYLOAD = TestUpstreamRetries.PAYLOAD
 
 
+class TestTokenEstimation:
+    """tiktoken-based token counting with heuristic fallback."""
+
+    def test_uses_tiktoken_when_available(self):
+        from proxy.llm_client import _estimate_tokens
+
+        try:
+            import tiktoken
+        except ImportError:
+            pytest.skip("tiktoken not installed")
+        enc = tiktoken.get_encoding("cl100k_base")
+        text = "The quick brown fox jumps over the lazy dog."
+        assert _estimate_tokens(text) == len(enc.encode(text))
+
+    def test_heuristic_fallback_branch(self, monkeypatch):
+        """With the encoding forced unavailable, len//4 (min 1) is used."""
+        from proxy import llm_client as llm_module
+
+        monkeypatch.setattr(llm_module, "_TOKEN_ENCODING", None)
+        monkeypatch.setattr(llm_module, "_ENCODING_LOAD_TRIED", True)
+        assert llm_module._estimate_tokens("abcdefgh") == 2  # 8 chars // 4
+        assert llm_module._estimate_tokens("ab") == 1  # min 1
+
+    def test_never_returns_zero_for_empty_text(self):
+        from proxy.llm_client import _estimate_tokens
+
+        assert _estimate_tokens("") >= 1
+
+
 class TestCircuitBreakerEndpoint:
     @pytest.mark.asyncio
     async def test_open_circuit_returns_503_openai_shape(self, client, monkeypatch):

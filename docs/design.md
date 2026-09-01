@@ -75,7 +75,7 @@
 | `routes/chat.py` (or equivalent — see Known issues) | `POST /v1/chat/completions` handler: BYOK key extraction, user_id derivation, provider resolution, coalescing, two-tier lookup, forward_to_llm, response shape, logging |
 | `cache.py` | Two-tier lookup (`lookup` / `_exact_lookup` / `_semantic_lookup`), `store`, `purge`, `_delete_entry`, `_detach_log_references`, `log_request`, `prune_old_logs` (retention rollup), `_rollup_totals`, `get_metrics`, `list_cache_entries`, `recent_logs` |
 | `embedding.py` | Lazy-loaded `SentenceTransformer("BAAI/bge-small-en-v1.5")`, `embed_texts` (2D float32, L2-normalized), `embedding_dim` (=384), `cosine_similarity` (np.dot on unit vectors) |
-| `llm_client.py` | `_post_with_retries` (bounded retry on 408/429/5xx + transport errors; honors `Retry-After`; surfaces >30 s waits immediately), `forward_to_llm` (mock or real; shared lifespan client or one-off), `_mock_response` (echoes last user msg), `_rough_token_count` |
+| `llm_client.py` | `_post_with_retries` (bounded retry on 408/429/5xx + transport errors; honors `Retry-After`; surfaces >30 s waits immediately), `CircuitBreaker` (per-upstream CLOSED/OPEN/HALF_OPEN fail-fast guard), `forward_to_llm` (mock or real; shared lifespan client or one-off), `_mock_response` (echoes last user msg), `_estimate_tokens` (tiktoken with heuristic fallback) |
 | `security.py` | `derive_user_id(api_key) = HMAC-SHA256(USER_ID_PEPPER, api_key)[:24]`; `LOCAL_USER_ID = "local"` for keyless mock traffic |
 | `config.py` | `Settings` (frozen dataclass), `get_settings()` (`lru_cache` factory), `PROVIDER_BASE_URLS` allowlist, `resolve_base_url()`, `DEFAULT_MODEL_PRICING`, `_parse_model_pricing()` |
 | `models.py` | OpenAI-shaped request/response Pydantic models; BYOK `provider` extension field (never sent upstream); per-user metric model |
@@ -147,8 +147,8 @@
 ### 4.11 Model-aware cost estimation with prefix inheritance
 
 - **Chosen:** `_estimate_cost(model, tokens_in, tokens_out)` looks up `(in_per_1M, out_per_1M)` from `DEFAULT_MODEL_PRICING` + `MODEL_PRICING` env override, falling back to the longest-matching prefix (e.g. `gpt-4o-mini-2025-01-15` inherits `gpt-4o-mini`). Unknown model → `$0.00` (free-tier safe).
-- **Alternative:** Hardcode gpt-3.5-turbo rates (the original Phase 5 behavior); use `tiktoken` for exact counts.
-- **Why this won:** BYOK mode sees free models from OpenRouter and Gemini where there's literally no per-token price to estimate — better to honestly say $0.00 than to fabricate. Prefix matching means adding a dated variant doesn't require a new entry. `tiktoken` would improve accuracy for paid models but isn't earned when the dominant case is "free tier + we report zero."
+- **Alternative:** Hardcode gpt-3.5-turbo rates (the original Phase 5 behavior); keep the `len//4` heuristic for token counts (the original implementation, replaced 2026-09-01).
+- **Why this won:** BYOK mode sees free models from OpenRouter and Gemini where there's literally no per-token price to estimate — better to honestly say $0.00 than to fabricate. Prefix matching means adding a dated variant doesn't require a new entry. Token **counts** now come from tiktoken `cl100k_base` (lazy-loaded, heuristic fallback if the BPE tables can't load; prewarmed into the Docker image), so the tokens-saved headline and per-user rollups are accurate rather than approximate — while the pricing *decision* (honest $0.00 for unknown models) is unchanged.
 
 ### 4.12 Single-process request coalescing (per prompt hash)
 

@@ -347,14 +347,39 @@ def _mock_response(request_body: dict[str, Any]) -> dict[str, Any]:
             }
         ],
         "usage": {
-            "prompt_tokens": _rough_token_count(last_user),
-            "completion_tokens": _rough_token_count(mock_content),
-            "total_tokens": _rough_token_count(last_user)
-            + _rough_token_count(mock_content),
+            "prompt_tokens": _estimate_tokens(last_user),
+            "completion_tokens": _estimate_tokens(mock_content),
+            "total_tokens": _estimate_tokens(last_user)
+            + _estimate_tokens(mock_content),
         },
     }
 
 
-def _rough_token_count(text: str) -> int:
-    """Quick-and-dirty token estimator (~4 chars per token)."""
+_TOKEN_ENCODING = None
+_ENCODING_LOAD_TRIED = False
+
+
+def _estimate_tokens(text: str) -> int:
+    """Token count: tiktoken cl100k_base when loadable, else ~4 chars/token.
+
+    tiktoken downloads its BPE tables once and caches them (honors
+    TIKTOKEN_CACHE_DIR); the Dockerfile prewarms that cache so production
+    cold starts never pay the download. If the library is missing or the
+    download fails (air-gapped hosts), fall back to the old heuristic — a
+    degraded estimate beats a hard failure on the metrics path.
+    """
+    global _TOKEN_ENCODING, _ENCODING_LOAD_TRIED
+    if not _ENCODING_LOAD_TRIED:
+        _ENCODING_LOAD_TRIED = True
+        try:
+            import tiktoken
+
+            _TOKEN_ENCODING = tiktoken.get_encoding("cl100k_base")
+        except Exception:  # noqa: BLE001 - any failure degrades to the heuristic
+            logger.warning(
+                "tiktoken unavailable — token counts fall back to the len//4 "
+                "heuristic; cost estimates become approximate."
+            )
+    if _TOKEN_ENCODING is not None:
+        return max(1, len(_TOKEN_ENCODING.encode(text)))
     return max(1, len(text) // 4)

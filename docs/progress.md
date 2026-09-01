@@ -15,6 +15,28 @@
 
 ---
 
+## 2026-09-01 (session 6) — tiktoken, dev-floor sync, final acceptance — code-side roadmap complete
+
+Context: closing out every remaining locally-implementable item. After this session, **everything left on the board requires the owner** (cloud deploy with real keys, destructive cleanup decisions) or a scope decision the todos explicitly park (ANN swap, streaming cache, distributed coalescing, per-tenant rate limiting). Test count 132 → **135**; black-box smoke 22/22.
+
+**What shipped**
+
+1. **tiktoken token counting (P2, the last deferred P2 that was code-side):** `_rough_token_count` (len//4) → `_estimate_tokens`: lazy-loaded `cl100k_base`, graceful fallback to the heuristic if the BPE tables can't load (air-gapped hosts) — a degraded estimate beats a hard failure on the metrics path. BPE tables prewarmed into the Docker image (`TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken` + a bake-step call), so production cold starts never pay the download. `tiktoken>=0.8,<1` added to requirements. No test changes needed — verified first that no test pins heuristic token values (the exact-count metrics tests inject tokens via `log_request` directly). 3 new tests: tiktoken parity, forced-fallback branch, min-1 guarantee.
+2. **Dev-dependency floors = tested versions:** discovered that local + CI have been running pytest 9.1.1 / pytest-asyncio 1.4.0 / pytest-cov 7.1.0 / ruff 0.16.4 all along (the `>=` floors install latest), with the 135-test suite green — so the four open Dependabot pip PRs were already empirically validated. Bumped `requirements-dev.txt` floors to those versions (supersedes the PRs' intent) and applied the actions-group PR's diff (`setup-python@v6→v7` ×3 in ci.yml). The 5 open PRs can be closed by the owner (or Dependabot auto-supersedes them); nothing to merge.
+3. **Schema-from-JSON P2 resolved by decision, not code:** the drift guard from session 5 delivers the item's goal (fresh DB always matches the published set) without JSON-seeding's init-order/migration risk; `seed_test_pairs()` stays the source of truth, JSON stays the exported artifact. Documented in `todos.md`.
+4. **Final acceptance:** full suite **135 passed**; ruff lint + format clean; **black-box smoke suite 22/22** against a live uvicorn (OpenAI contract, MISS→HIT, paraphrase hit, cross-model isolation, bypass, exact metrics accounting, logs, purge) — the same suite CI runs against the containerized server.
+
+**Docs kept fresh:** README What's-new line reflects auto-tune/breaker/tiktoken; `design.md` §4.11 rewritten (tiktoken now supplies counts; honest-$0.00 pricing decision unchanged) + module table updated; LAUNCH_CHECKLIST status banner refreshed; test counts synced to 135.
+
+**Remaining (all owner-side — nothing code-side left):**
+- Apply the Render Blueprint + run the BYOK runbook with two real provider keys (needs your accounts/keys).
+- Close/ignore the 5 open Dependabot PRs (superseded by the floor bumps; merging them is now a no-op).
+- OneDrive remnant folder cleanup (destructive — your call; remote + local are in lockstep).
+- LICENSE name confirmation (currently "Arpan Goyal" from git config).
+- The parked P3 stretch items (ANN swap, streaming cache, distributed coalescing, per-tenant rate limiting, sibling integration) remain documented as deliberately deferred — they need production scale or another project to exist.
+
+---
+
 ## 2026-09-01 (session 5) — Circuit breaker shipped, LICENSE added, drift guard
 
 Context: continued from session 4 with CI verified green on all three prior pushes (checked via the GitHub API — the new `ruff format --check` gate passed). Scope: the circuit breaker stretch item, the LICENSE P1, and the dataset drift-guard P2. Test count 123 → **132**.
