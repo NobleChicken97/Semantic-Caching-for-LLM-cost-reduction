@@ -142,9 +142,7 @@ def _migrate_user_scoping(conn: sqlite3.Connection) -> None:
 
 
 def _existing_tables(conn: sqlite3.Connection) -> set[str]:
-    rows = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'"
-    ).fetchall()
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     return {row[0] for row in rows}
 
 
@@ -185,25 +183,53 @@ def seed_test_pairs() -> None:
         pairs = [
             # ---- should_match = 1 (paraphrases) ----
             ("What is the capital of France?", "Tell me the capital of France.", 1),
-            ("How do I reset my password?", "I forgot my password, how can I reset it?", 1),
-            ("Summarize the plot of Inception.", "Can you give me a summary of the movie Inception?", 1),
+            (
+                "How do I reset my password?",
+                "I forgot my password, how can I reset it?",
+                1,
+            ),
+            (
+                "Summarize the plot of Inception.",
+                "Can you give me a summary of the movie Inception?",
+                1,
+            ),
             ("What is 2 + 2?", "Calculate two plus two.", 1),
-            ("Explain quantum computing in simple terms.", "Give me a simple explanation of quantum computing.", 1),
+            (
+                "Explain quantum computing in simple terms.",
+                "Give me a simple explanation of quantum computing.",
+                1,
+            ),
             ("Write a haiku about the ocean.", "Compose a haiku on the sea.", 1),
             ("What year did WWII end?", "When did World War II finish?", 1),
             ("Translate 'hello' to Spanish.", "How do you say hello in Spanish?", 1),
-            ("List three benefits of exercise.", "Name three advantages of working out.", 1),
-            ("Define machine learning.", "What is the definition of machine learning?", 1),
+            (
+                "List three benefits of exercise.",
+                "Name three advantages of working out.",
+                1,
+            ),
+            (
+                "Define machine learning.",
+                "What is the definition of machine learning?",
+                1,
+            ),
             # ---- should_match = 0 (near-misses / different intent) ----
             ("What is the capital of France?", "What is the population of France?", 0),
             ("Summarize the plot of Inception.", "Who directed Inception?", 0),
             ("How do I reset my password?", "How do I change my username?", 0),
             ("What is 2 + 2?", "What is the square root of 16?", 0),
             ("Write a haiku about the ocean.", "Write a limerick about the ocean.", 0),
-            ("Explain quantum computing in simple terms.", "Explain classical computing in simple terms.", 0),
+            (
+                "Explain quantum computing in simple terms.",
+                "Explain classical computing in simple terms.",
+                0,
+            ),
             ("What year did WWII end?", "What year did WWI start?", 0),
             ("Translate 'hello' to Spanish.", "Translate 'goodbye' to Spanish.", 0),
-            ("List three benefits of exercise.", "List three risks of over-exercising.", 0),
+            (
+                "List three benefits of exercise.",
+                "List three risks of over-exercising.",
+                0,
+            ),
             ("Define machine learning.", "Define deep learning.", 0),
             # ---- edge cases: very short prompts ----
             ("What is AI?", "Define artificial intelligence.", 1),
@@ -224,10 +250,22 @@ def seed_test_pairs() -> None:
                 "My laptop does not start when I press the power button.",
                 1,
             ),
-            ("Recommend a good sci-fi book.", "Can you suggest a great science fiction novel?", 1),
+            (
+                "Recommend a good sci-fi book.",
+                "Can you suggest a great science fiction novel?",
+                1,
+            ),
             ("Fix my bicycle tire.", "Translate 'good morning' to French.", 0),
-            ("Best programming language for beginners?", "Give me a brief history of the Roman Empire.", 0),
-            ("How do I bake chocolate chip cookies?", "How do I change a flat tire on a car?", 0),
+            (
+                "Best programming language for beginners?",
+                "Give me a brief history of the Roman Empire.",
+                0,
+            ),
+            (
+                "How do I bake chocolate chip cookies?",
+                "How do I change a flat tire on a car?",
+                0,
+            ),
         ]
         conn.executemany(
             "INSERT INTO labeled_test_pairs (prompt_a, prompt_b, should_match) VALUES (?, ?, ?)",

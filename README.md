@@ -6,6 +6,8 @@ A drop-in caching proxy that sits in front of any OpenAI-compatible LLM API, rec
 
 > **Resume line:** Built a semantic caching proxy for LLM APIs using embedding similarity matching, with a tuned threshold validated against a labeled test set, cutting redundant API spend with live hit-rate and cost-saved tracking.
 
+> **What's new:** there's a session-by-session build log in [`docs/progress.md`](docs/progress.md) — every phase, decision, bug (with root cause), and measured number. The headline metric of that log right now: the threshold default of 0.85 re-validated against current embedding weights (F1 still peaks there), and a new [`/eval/auto-tune`](#post-evalauto-tune) endpoint that re-derives the pick on demand.
+
 ---
 
 ## The problem
@@ -70,7 +72,7 @@ Precision/recall across thresholds against a 31-pair labeled dataset (full analy
 | Embeddings | sentence-transformers · `BAAI/bge-small-en-v1.5` (CPU) |
 | Vector math | numpy (dot-product cosine on unit vectors) |
 | Storage | SQLite (WAL mode, foreign keys ON) |
-| Testing | pytest + pytest-asyncio (114 tests) |
+| Testing | pytest + pytest-asyncio (123 tests) |
 
 ---
 
@@ -173,6 +175,21 @@ curl -X POST http://127.0.0.1:8000/eval/threshold-sweep \
 ```
 
 The sweep embeds each labeled pair once, then classifies at every requested threshold — see [`docs/THRESHOLD_ANALYSIS.md`](docs/THRESHOLD_ANALYSIS.md).
+
+#### `POST /eval/auto-tune`
+
+Developer aid on top of the sweep: picks the F1-optimal threshold and surfaces the borderline labeled pairs that justify the pick.
+
+```bash
+curl -X POST http://127.0.0.1:8000/eval/auto-tune -H "Content-Type: application/json" -d '{}'
+# -> {"best_threshold": 0.85, "best_f1": 0.8571,
+#     "results": [ ...same shape as /eval/threshold-sweep... ],
+#     "borderline": [{"prompt_a": "...", "prompt_b": "...", "similarity": 0.861, "should_match": true}, ...]}
+```
+
+- Omit the body (or `"thresholds": null`) to sweep the documented default grid `[0.80 … 0.95]`; pass an explicit list to search your own.
+- F1 ties break toward the **lower** threshold — at equal F1, extra recall is worth more than extra precision for a cache (a false hit serves a slightly-off answer; a false miss just pays for one more generation).
+- `borderline` lists pairs within ±0.03 of the pick, nearest first (max 10) — concrete evidence for why the threshold sits where it does.
 
 ### `GET /cache/entries?q=` · `GET /logs/recent?limit=`
 
@@ -277,7 +294,7 @@ Caveats worth knowing:
 | Job | What it proves |
 |-----|----------------|
 | **Lint** | `ruff` clean across `src/`, `tests/`, `scripts/` |
-| **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 114-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
+| **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 123-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
 | **Docker smoke** | Builds the production image with GHA layer caching, asserts `torch.cuda.is_available()` is False inside it, then runs the same black-box smoke suite against the containerized server |
 | **Security audit** (non-blocking) | `pip-audit` over `requirements.txt` on every push/PR; findings are published as persistent code-scanning alerts in the **Security tab** (nothing is suppressed or ignored), while transitive-CVE noise from the torch/fastapi ecosystem doesn't gate routine PRs. Dependabot version-bump PRs for pip are off (the `>=` floors make them cosmetic); CVE-driven Dependabot security PRs remain active independently |
 
@@ -294,7 +311,7 @@ Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the 
 │   ├── eval.py          Threshold sweep: batch embed → classify → P/R/F1
 │   ├── database.py      SQLite schema + 31 labeled test pairs
 │   └── ...
-├── tests/               114 tests (unit + integration)
+├── tests/               123 tests (unit + integration)
 ├── scripts/             Sweep runner, pair checker, JSON exporter, CI smoke suite
 │   ├── .github/         CI workflow (lint / test matrix / docker smoke / audit) + Dependabot
 ├── data/labeled_test_pairs.json   Reproducible validation dataset
@@ -316,3 +333,7 @@ Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the 
 ## Dashboard
 
 Run the proxy and open **`http://127.0.0.1:8000/dashboard`** for live hit-rate/cost/latency charts, a searchable cache browser with purge actions, an interactive threshold-sweep runner, and a polling request log. (Chart.js loads from CDN — first view needs internet.)
+
+## Troubleshooting
+
+**"Semantic scan exceeded MAX_SEMANTIC_SCAN_ENTRIES" in the logs.** The semantic tier compares the incoming prompt against *every unexpired cache entry for that user* — an O(n) scan per request, a deliberate v1 tradeoff (see `docs/design.md` §5). Once a user's live entries cross the `MAX_SEMANTIC_SCAN_ENTRIES` limit (default 5000), the proxy logs this warning once per process. It is not an error — lookups keep working — but per-request semantic latency grows linearly with entry count, so treat the warning as your cue to either shrink the scan (shorter `CACHE_TTL_SECONDS`, `POST /cache/purge`) or plan the ANN-index swap: the numpy loop inside `_semantic_lookup` was written so its body can be replaced by sqlite-vec / FAISS / pgvector without touching the function signature or any caller.

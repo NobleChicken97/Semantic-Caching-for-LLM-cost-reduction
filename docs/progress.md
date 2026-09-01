@@ -15,6 +15,35 @@
 
 ---
 
+## 2026-09-01 (session 4) — `/eval/auto-tune` shipped + P2 polish batch
+
+Context: first real feature session after the P0 recovery. Scope chosen from `todos.md`: the auto-tune stretch item (highest-value remaining development) plus four P2 polish items that were zero-ambiguity. Everything verified before commit; full suite green after each change.
+
+**What shipped**
+
+1. **`POST /eval/auto-tune` (app bumped to v0.5.0)** — the stretch-item developer aid:
+   - `eval.py`: new `pair_similarity_details()` (per-pair similarity **with the prompts**, unlike the label-only tuples `pair_similarities()` returns — which is now a thin wrapper over it, API unchanged); `run_auto_tune(thresholds=None)`; constants `DEFAULT_SWEEP_THRESHOLDS` (the documented 0.80–0.95 grid), `BORDERLINE_BAND = 0.03`, `MAX_BORDERLINE = 10`.
+   - Semantics: F1 ties break toward the **lower** threshold (at equal F1, a cache prefers recall — a false hit serves a slightly-off answer, a false miss just pays for one more generation). `borderline` = labeled pairs within ±0.03 of the pick, nearest first, max 10 — the evidence behind the number.
+   - `models.py`: `AutoTuneRequest` (grid optional), `BorderlinePair`, `AutoTuneResponse`. `main.py`: endpoint registered, admin-gated like the sweep; empty grid / empty dataset → `best_threshold: null` (mirrors sweep's `[] → []` contract).
+   - 9 new tests (6 unit in `test_eval.py`, 3 API in `test_api.py`) → **123 total**. Live-verified against a real uvicorn: picks **0.85 @ F1 0.8571** on the seeded set, borderline led by the sci-fi pair at 0.8513. Documented in README API reference + `TECHNICAL_DETAIL.md` endpoint list.
+2. **P2: ruff format applied repo-wide** (18 files reformatted, zero behavior change — full suite re-run green) and `ruff format --check` is now a gating step in the CI lint job (the long-standing "deliberately not gated" note is closed).
+3. **P2: requirements upper bounds** — `sentence-transformers>=3.0.0,<6` and explicit `torch>=2.0,<3.0`. Range check before committing: includes Docker/CI pin `2.5.1+cpu`, local `2.13.0`, ST `5.7.0` (the exact versions the curve was re-validated on this morning), so nothing in use is excluded; only silent future major bumps are blocked.
+4. **P2: README Troubleshooting section** for the `MAX_SEMANTIC_SCAN_ENTRIES` warning (what it means, warn-only, shrink-the-scan vs ANN-swap responses; cites `design.md` §5 — reference verified).
+5. **P2: README "What's new"** pointer to `docs/progress.md`. Test counts synced 114 → 123 in README tech-stack/CI/layout tables and `LAUNCH_CHECKLIST.md`.
+
+**What was decided**
+- Tiktoken for `_rough_token_count` **deferred** (still P2): it changes cost-estimate behavior and adds a dependency + download for a number that only matters on paid-model traffic — not a 95%-sure change, so it waits for an owner call.
+- Schema-from-JSON export (P2) also left for an owner call: touches init/migration ordering.
+
+**Bugs found + root cause + fix**
+- None new. Ruff lint passed clean both before and after the format pass (no latent issues surfaced).
+
+**Open questions / unresolved**
+- Remaining P1 items are owner actions: Render Blueprint + BYOK runbook with real keys, `LICENSE` name, OneDrive remnant cleanup.
+- Remaining P2/P3: tiktoken, schema-from-JSON export, circuit breaker, ANN swap, distributed coalescing, streaming cache, per-tenant rate limiting (see `todos.md`).
+
+---
+
 ## 2026-09-01 (session 3) — P0 recovery shipped: repo restored, verified, and re-synced with remote
 
 Context: execution session for the P0 plan recorded in `todos.md`. Goal was to close the missing-files bug for good and get local/remote back in lockstep, without changing any application code.

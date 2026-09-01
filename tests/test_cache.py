@@ -34,7 +34,11 @@ SAMPLE_RESPONSE = {
     "created": 1700000000,
     "model": "gpt-3.5-turbo",
     "choices": [
-        {"index": 0, "message": {"role": "assistant", "content": "Paris"}, "finish_reason": "stop"}
+        {
+            "index": 0,
+            "message": {"role": "assistant", "content": "Paris"},
+            "finish_reason": "stop",
+        }
     ],
     "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
 }
@@ -76,22 +80,28 @@ class TestModelAwareCost:
     def test_known_model_uses_table(self):
         from proxy.routes.chat import _estimate_cost
 
-        resp = {"model": "gpt-3.5-turbo",
-                "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}}
+        resp = {
+            "model": "gpt-3.5-turbo",
+            "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000},
+        }
         assert _estimate_cost(resp) == pytest.approx(2.0)
 
     def test_unknown_model_costs_zero(self):
         from proxy.routes.chat import _estimate_cost
 
-        resp = {"model": "some-free-openrouter-model",
-                "usage": {"prompt_tokens": 999_999, "completion_tokens": 999_999}}
+        resp = {
+            "model": "some-free-openrouter-model",
+            "usage": {"prompt_tokens": 999_999, "completion_tokens": 999_999},
+        }
         assert _estimate_cost(resp) == 0.0
 
     def test_prefix_match_inherits_family_pricing(self):
         from proxy.routes.chat import _estimate_cost
 
-        resp = {"model": "gpt-3.5-turbo-1106",
-                "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 0}}
+        resp = {
+            "model": "gpt-3.5-turbo-1106",
+            "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 0},
+        }
         assert _estimate_cost(resp) == pytest.approx(0.5)
 
     def test_env_override_extends_table(self, monkeypatch):
@@ -101,8 +111,10 @@ class TestModelAwareCost:
         monkeypatch.setenv("MODEL_PRICING", "gemini-flash=1.00,3.00")
         get_settings.cache_clear()
         try:
-            resp = {"model": "gemini-flash",
-                    "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 0}}
+            resp = {
+                "model": "gemini-flash",
+                "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 0},
+            }
             assert _estimate_cost(resp) == pytest.approx(1.0)
         finally:
             get_settings.cache_clear()
@@ -137,7 +149,9 @@ class TestHash:
 
 class TestExactMatchCache:
     def test_store_and_retrieve(self):
-        entry_id = store("What is the capital of France?", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+        entry_id = store(
+            "What is the capital of France?", SAMPLE_RESPONSE, "gpt-3.5-turbo"
+        )
         assert entry_id > 0
 
         result = _exact_lookup("What is the capital of France?")
@@ -284,7 +298,9 @@ class TestTtlExpiry:
 
         # Store under one string; probe with a paraphrase so the EXACT
         # tier misses and only the SEMANTIC tier can serve the entry.
-        eid = store("What is the boiling point of water?", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+        eid = store(
+            "What is the boiling point of water?", SAMPLE_RESPONSE, "gpt-3.5-turbo"
+        )
 
         conn = get_connection()
         try:
@@ -339,7 +355,9 @@ class TestEmbeddingDeserialization:
         """A truncated blob in the table must not blow up the semantic scan."""
         from proxy.database import get_connection
 
-        eid = store("What is the boiling point of water?", SAMPLE_RESPONSE, "gpt-3.5-turbo")
+        eid = store(
+            "What is the boiling point of water?", SAMPLE_RESPONSE, "gpt-3.5-turbo"
+        )
 
         conn = get_connection()
         try:
@@ -380,7 +398,9 @@ class TestEmbeddingDeserialization:
                 "SELECT prompt_embedding FROM cache_entries WHERE entry_id = ?",
                 (baseline["entry_id"],),
             ).fetchone()
-            blown_up = (np.frombuffer(row["prompt_embedding"], dtype=np.float32) * 5.0).tobytes()
+            blown_up = (
+                np.frombuffer(row["prompt_embedding"], dtype=np.float32) * 5.0
+            ).tobytes()
             conn.execute(
                 "UPDATE cache_entries SET prompt_embedding = ? WHERE entry_id = ?",
                 (blown_up, baseline["entry_id"]),
@@ -405,31 +425,62 @@ class TestUserScoping:
         assert len(derive_user_id("sk-alice")) == 24
 
     def test_same_prompt_two_users_two_entries_no_cross_hit(self):
-        resp_a = {**SAMPLE_RESPONSE, "choices": [
-            {"index": 0, "message": {"role": "assistant", "content": "Alice's Paris"},
-             "finish_reason": "stop"}]}
-        resp_b = {**SAMPLE_RESPONSE, "choices": [
-            {"index": 0, "message": {"role": "assistant", "content": "Bob's Paris"},
-             "finish_reason": "stop"}]}
+        resp_a = {
+            **SAMPLE_RESPONSE,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "Alice's Paris"},
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+        resp_b = {
+            **SAMPLE_RESPONSE,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "Bob's Paris"},
+                    "finish_reason": "stop",
+                }
+            ],
+        }
 
-        id_a = store("What is the capital of France?", resp_a, "gpt-3.5-turbo", user_id="alice")
-        id_b = store("What is the capital of France?", resp_b, "gpt-3.5-turbo", user_id="bob")
+        id_a = store(
+            "What is the capital of France?", resp_a, "gpt-3.5-turbo", user_id="alice"
+        )
+        id_b = store(
+            "What is the capital of France?", resp_b, "gpt-3.5-turbo", user_id="bob"
+        )
         assert id_a != id_b  # composite unique allows one entry per (hash, user)
 
-        hit_a = lookup("What is the capital of France?", model="gpt-3.5-turbo", user_id="alice")
-        hit_b = lookup("What is the capital of France?", model="gpt-3.5-turbo", user_id="bob")
+        hit_a = lookup(
+            "What is the capital of France?", model="gpt-3.5-turbo", user_id="alice"
+        )
+        hit_b = lookup(
+            "What is the capital of France?", model="gpt-3.5-turbo", user_id="bob"
+        )
         assert hit_a["response"]["choices"][0]["message"]["content"] == "Alice's Paris"
         assert hit_b["response"]["choices"][0]["message"]["content"] == "Bob's Paris"
 
     def test_semantic_tier_never_crosses_users(self):
-        store("What is the capital of France?", SAMPLE_RESPONSE, "gpt-3.5-turbo", user_id="alice")
+        store(
+            "What is the capital of France?",
+            SAMPLE_RESPONSE,
+            "gpt-3.5-turbo",
+            user_id="alice",
+        )
 
         # Bob's paraphrase must NOT semantically match Alice's cached answer.
-        miss = lookup("Tell me the capital of France.", model="gpt-3.5-turbo", user_id="bob")
+        miss = lookup(
+            "Tell me the capital of France.", model="gpt-3.5-turbo", user_id="bob"
+        )
         assert miss is None
 
         # ...but Alice's own paraphrase still hits her entry.
-        hit = lookup("Tell me the capital of France.", model="gpt-3.5-turbo", user_id="alice")
+        hit = lookup(
+            "Tell me the capital of France.", model="gpt-3.5-turbo", user_id="alice"
+        )
         assert hit is not None
 
     def test_default_user_is_local_for_legacy_calls(self):
@@ -445,14 +496,28 @@ class TestLogRetention:
 
     def _seed(self):
         # Two HITs and one MISS older than the window, one fresh row.
-        log_request("old-hit-1", "HIT", 1.0, estimated_cost_usd=0.001,
-                    tokens_in=10, tokens_out=20)
-        log_request("old-hit-2", "HIT", 1.0, estimated_cost_usd=0.002,
-                    tokens_in=5, tokens_out=5)
-        log_request("old-miss", "MISS", 2.0, estimated_cost_usd=0.010,
-                    tokens_in=999, tokens_out=999)
-        log_request("fresh-hit", "HIT", 1.0, estimated_cost_usd=0.004,
-                    tokens_in=7, tokens_out=3)
+        log_request(
+            "old-hit-1",
+            "HIT",
+            1.0,
+            estimated_cost_usd=0.001,
+            tokens_in=10,
+            tokens_out=20,
+        )
+        log_request(
+            "old-hit-2", "HIT", 1.0, estimated_cost_usd=0.002, tokens_in=5, tokens_out=5
+        )
+        log_request(
+            "old-miss",
+            "MISS",
+            2.0,
+            estimated_cost_usd=0.010,
+            tokens_in=999,
+            tokens_out=999,
+        )
+        log_request(
+            "fresh-hit", "HIT", 1.0, estimated_cost_usd=0.004, tokens_in=7, tokens_out=3
+        )
 
         old = time.time() - 40 * 86_400
         from proxy.database import get_connection
@@ -478,9 +543,7 @@ class TestLogRetention:
 
         conn = get_connection()
         try:
-            remaining = conn.execute(
-                "SELECT prompt_text FROM request_log"
-            ).fetchall()
+            remaining = conn.execute("SELECT prompt_text FROM request_log").fetchall()
             assert [r["prompt_text"] for r in remaining] == ["fresh-hit"]
 
             rollup = conn.execute("SELECT * FROM daily_metrics").fetchone()
@@ -497,8 +560,12 @@ class TestLogRetention:
         prune_old_logs(days=30)
         after = get_metrics()
 
-        for key in ("total_requests", "hit_rate",
-                    "estimated_cost_saved_usd", "total_tokens_saved"):
+        for key in (
+            "total_requests",
+            "hit_rate",
+            "estimated_cost_saved_usd",
+            "total_tokens_saved",
+        ):
             assert after[key] == pytest.approx(before[key]), key
         # The fresh row is still raw and visible.
         assert after["total_requests"] == 4
@@ -518,10 +585,12 @@ class TestTokensSavedAndPerUserMetrics:
     """Phase 7.4 — headline tokens-saved metric + per-user breakdown."""
 
     def test_tokens_saved_counts_hits_only(self):
-        log_request("a", "HIT", 1.0, estimated_cost_usd=0.001,
-                    tokens_in=10, tokens_out=20)
-        log_request("b", "MISS", 2.0, estimated_cost_usd=0.002,
-                    tokens_in=100, tokens_out=200)  # a real generation: not saved
+        log_request(
+            "a", "HIT", 1.0, estimated_cost_usd=0.001, tokens_in=10, tokens_out=20
+        )
+        log_request(
+            "b", "MISS", 2.0, estimated_cost_usd=0.002, tokens_in=100, tokens_out=200
+        )  # a real generation: not saved
         log_request("c", "BYPASS", 3.0, tokens_in=5, tokens_out=5)
         log_request("d", "ERROR", 4.0)
 
@@ -530,12 +599,33 @@ class TestTokensSavedAndPerUserMetrics:
         assert m["total_tokens_saved"] == 30
 
     def test_per_user_breakdown_sums_to_global(self):
-        log_request("p1", "HIT", 1.0, estimated_cost_usd=0.001,
-                    tokens_in=10, tokens_out=20, user_id="alice")
-        log_request("p2", "HIT", 1.0, estimated_cost_usd=0.002,
-                    tokens_in=1, tokens_out=2, user_id="alice")
-        log_request("p3", "HIT", 1.0, estimated_cost_usd=0.004,
-                    tokens_in=100, tokens_out=200, user_id="bob")
+        log_request(
+            "p1",
+            "HIT",
+            1.0,
+            estimated_cost_usd=0.001,
+            tokens_in=10,
+            tokens_out=20,
+            user_id="alice",
+        )
+        log_request(
+            "p2",
+            "HIT",
+            1.0,
+            estimated_cost_usd=0.002,
+            tokens_in=1,
+            tokens_out=2,
+            user_id="alice",
+        )
+        log_request(
+            "p3",
+            "HIT",
+            1.0,
+            estimated_cost_usd=0.004,
+            tokens_in=100,
+            tokens_out=200,
+            user_id="bob",
+        )
         log_request("p4", "MISS", 1.0, user_id="bob")
 
         m = get_metrics()
@@ -548,9 +638,10 @@ class TestTokensSavedAndPerUserMetrics:
         assert by_user["bob"]["hits"] == 1
         assert by_user["bob"]["total_requests"] == 2
         assert sum(u["tokens_saved"] for u in m["per_user"]) == m["total_tokens_saved"]
-        assert round(
-            sum(u["cost_saved_usd"] for u in m["per_user"]), 6
-        ) == m["estimated_cost_saved_usd"]
+        assert (
+            round(sum(u["cost_saved_usd"] for u in m["per_user"]), 6)
+            == m["estimated_cost_saved_usd"]
+        )
 
 
 class TestSemanticScanGuardrail:

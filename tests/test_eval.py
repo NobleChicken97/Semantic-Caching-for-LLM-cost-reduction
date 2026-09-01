@@ -95,10 +95,12 @@ class TestThresholdSweep:
         """
         from proxy.eval import run_threshold_sweep
 
-        _insert_pairs([
-            ("same text", "same text", 1),
-            ("alpha prompt", "beta prompt", 0),
-        ])
+        _insert_pairs(
+            [
+                ("same text", "same text", 1),
+                ("alpha prompt", "beta prompt", 0),
+            ]
+        )
         results = run_threshold_sweep([0.999])
         r = results[0]
         assert r.precision == 1.0
@@ -148,3 +150,62 @@ class TestSeededDataset:
         negatives = len(pairs) - positives
         assert positives >= 10
         assert negatives >= 10
+
+
+class TestAutoTune:
+    def test_empty_db_returns_null_best(self):
+        from proxy.eval import run_auto_tune
+
+        tune = run_auto_tune()
+        assert tune["best"] is None
+        assert tune["results"] == []
+        assert tune["borderline"] == []
+
+    def test_empty_thresholds_returns_empty(self):
+        """Explicit empty grid mirrors /eval/threshold-sweep's [] -> []. contract."""
+        from proxy.eval import run_auto_tune
+
+        _insert_pairs([("a", "a", 1)])
+        tune = run_auto_tune([])
+        assert tune["best"] is None
+        assert tune["results"] == []
+
+    def test_default_thresholds_used_when_omitted(self):
+        from proxy.eval import DEFAULT_SWEEP_THRESHOLDS, run_auto_tune
+
+        _insert_pairs([("same text", "same text", 1)])
+        tune = run_auto_tune(None)
+        assert [r.threshold for r in tune["results"]] == DEFAULT_SWEEP_THRESHOLDS
+
+    def test_f1_tie_breaks_toward_lower_threshold(self):
+        """An identical pair scores F1=1.0 at every threshold below its sim;
+        the pick must be the lowest of the tied grid (recall-favoring)."""
+        from proxy.eval import run_auto_tune
+
+        _insert_pairs([("hello world", "hello world", 1)])
+        tune = run_auto_tune([0.80, 0.85, 0.90])
+        assert tune["best"].threshold == 0.80
+        assert tune["best"].f1 == 1.0
+
+    def test_borderline_pairs_respect_band(self):
+        """Every reported borderline pair sits within the band of the pick."""
+        from proxy.database import seed_test_pairs
+        from proxy.eval import BORDERLINE_BAND, run_auto_tune
+
+        seed_test_pairs()
+        tune = run_auto_tune([0.80, 0.85, 0.88, 0.90])
+        assert tune["best"] is not None
+        for p in tune["borderline"]:
+            assert abs(p["similarity"] - tune["best"].threshold) <= BORDERLINE_BAND
+            assert isinstance(p["should_match"], bool)
+
+    def test_borderline_sorted_by_distance_to_threshold(self):
+        from proxy.database import seed_test_pairs
+        from proxy.eval import run_auto_tune
+
+        seed_test_pairs()
+        tune = run_auto_tune([0.80, 0.85, 0.88, 0.90])
+        distances = [
+            abs(p["similarity"] - tune["best"].threshold) for p in tune["borderline"]
+        ]
+        assert distances == sorted(distances)

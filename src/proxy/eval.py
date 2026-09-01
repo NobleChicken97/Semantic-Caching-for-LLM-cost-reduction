@@ -43,8 +43,13 @@ def _precision_recall_f1(tp: int, fp: int, fn: int) -> tuple:
     return precision, recall, f1
 
 
-def pair_similarities() -> list[tuple]:
-    """Embed each pair once and return [(similarity, should_match), ...]."""
+def pair_similarity_details() -> list[dict]:
+    """Embed each pair once and return per-pair detail dicts.
+
+    Each dict carries the pair's prompts alongside its cosine similarity
+    and label, so callers can explain *which* pairs sit near a threshold
+    rather than only aggregate counts.
+    """
     pairs = load_labeled_pairs()
     if not pairs:
         return []
@@ -55,11 +60,23 @@ def pair_similarities() -> list[tuple]:
         texts.extend([p["prompt_a"], p["prompt_b"]])
     vectors = embed_texts(texts)
 
-    out: list[tuple] = []
+    out: list[dict] = []
     for i, p in enumerate(pairs):
         sim = float(cosine_similarity(vectors[2 * i], vectors[2 * i + 1]))
-        out.append((sim, p["should_match"]))
+        out.append(
+            {
+                "prompt_a": p["prompt_a"],
+                "prompt_b": p["prompt_b"],
+                "similarity": sim,
+                "should_match": p["should_match"],
+            }
+        )
     return out
+
+
+def pair_similarities() -> list[tuple]:
+    """Embed each pair once and return [(similarity, should_match), ...]."""
+    return [(d["similarity"], d["should_match"]) for d in pair_similarity_details()]
 
 
 def run_threshold_sweep(thresholds: list[float]) -> list[ThresholdResult]:
@@ -92,3 +109,51 @@ def run_threshold_sweep(thresholds: list[float]) -> list[ThresholdResult]:
             )
         )
     return results
+
+
+# Thresholds swept by /eval/auto-tune when the caller supplies none — the
+# same grid documented in docs/THRESHOLD_ANALYSIS.md.
+DEFAULT_SWEEP_THRESHOLDS = [0.80, 0.82, 0.85, 0.88, 0.90, 0.93, 0.95]
+
+# Pairs whose similarity falls within this band of the chosen threshold are
+# reported as "borderline" — they are the ones that would flip to the other
+# side of the decision if the threshold moved slightly.
+BORDERLINE_BAND = 0.03
+
+# Cap on reported borderline pairs so the response stays readable.
+MAX_BORDERLINE = 10
+
+
+def run_auto_tune(thresholds: list[float] | None = None) -> dict:
+    """Sweep thresholds, pick the F1-optimal one, and surface borderline pairs.
+
+    F1 ties break toward the LOWER threshold: at equal F1 the extra recall
+    is worth more than the extra precision for a cache (a false hit serves a
+    slightly-off answer; a false miss just pays for one more generation).
+
+    Returns ``{"best": ThresholdResult | None, "results": [...],
+    "borderline": [detail dicts sorted by distance to the threshold]}``.
+    ``best`` is ``None`` when the dataset or threshold list is empty.
+    """
+    if thresholds is None:
+        thresholds = list(DEFAULT_SWEEP_THRESHOLDS)
+
+    if not thresholds:
+        return {"best": None, "results": [], "borderline": []}
+
+    details = pair_similarity_details()
+    if not details:
+        return {"best": None, "results": [], "borderline": []}
+
+    results = run_threshold_sweep(thresholds)
+    best = max(results, key=lambda r: (r.f1, -r.threshold))
+
+    borderline = [
+        d for d in details if abs(d["similarity"] - best.threshold) <= BORDERLINE_BAND
+    ]
+    borderline.sort(key=lambda d: abs(d["similarity"] - best.threshold))
+    return {
+        "best": best,
+        "results": results,
+        "borderline": borderline[:MAX_BORDERLINE],
+    }

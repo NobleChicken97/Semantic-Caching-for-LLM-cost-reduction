@@ -77,6 +77,17 @@ body: { thresholds: [0.80, 0.85, 0.90, 0.95] }
 -> precision/recall at each threshold against LabeledTestPair set
 ```
 
+### `POST /eval/auto-tune`
+```
+body: { thresholds?: [...] }   # omit to sweep the documented default grid
+-> { best_threshold, best_f1, results: [...same as sweep...],
+     borderline: [{prompt_a, prompt_b, similarity, should_match}] }
+```
+F1 ties break toward the lower (higher-recall) threshold; `borderline`
+lists labeled pairs within ±0.03 of the pick, nearest first (max 10).
+Developer aid — re-derives the threshold recommendation with evidence
+instead of trusting a hard-coded default.
+
 ---
 
 ## 5. Build Plan (phased)

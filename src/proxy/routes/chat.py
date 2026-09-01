@@ -60,7 +60,7 @@ def _extract_caller_key(request: Request) -> str | None:
     """
     auth = request.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
-        token = auth[len("Bearer "):].strip()
+        token = auth[len("Bearer ") :].strip()
         return token or None
     return None
 
@@ -270,7 +270,9 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
                         similarity_score=None,
                         estimated_cost_usd=cost,
                         tokens_in=raw_resp.get("usage", {}).get("prompt_tokens", 0),
-                        tokens_out=raw_resp.get("usage", {}).get("completion_tokens", 0),
+                        tokens_out=raw_resp.get("usage", {}).get(
+                            "completion_tokens", 0
+                        ),
                         user_id=user_id,
                     )
                     return raw_resp
@@ -330,8 +332,7 @@ def _estimate_cost(response_dict: dict) -> float:
     usage = response_dict.get("usage", {})
     prompt_tokens = usage.get("prompt_tokens", 0)
     completion_tokens = usage.get("completion_tokens", 0)
-    cost = (
-        (prompt_tokens / 1_000_000) * rates[0]
-        + (completion_tokens / 1_000_000) * rates[1]
-    )
+    cost = (prompt_tokens / 1_000_000) * rates[0] + (
+        completion_tokens / 1_000_000
+    ) * rates[1]
     return round(cost, 8)

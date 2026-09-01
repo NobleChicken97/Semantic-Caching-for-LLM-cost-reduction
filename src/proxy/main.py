@@ -13,8 +13,10 @@ from fastapi.responses import FileResponse
 from .cache import get_metrics, list_cache_entries, prune_old_logs, purge, recent_logs
 from .config import get_settings
 from .database import init_db, seed_test_pairs
-from .eval import run_threshold_sweep
+from .eval import run_auto_tune, run_threshold_sweep
 from .models import (
+    AutoTuneRequest,
+    AutoTuneResponse,
     CacheEntriesResponse,
     LogsResponse,
     MetricsResponse,
@@ -75,7 +77,9 @@ async def lifespan(app: FastAPI):
         try:
             pruned = prune_old_logs()
             if pruned:
-                logger.info("Pruned %d request-log row(s) past the 30-day window.", pruned)
+                logger.info(
+                    "Pruned %d request-log row(s) past the 30-day window.", pruned
+                )
         except Exception:
             logger.exception("Log retention pass failed — will retry next startup.")
         logger.info("Database initialized.")
@@ -99,11 +103,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Semantic Cache Proxy",
-    version="0.4.0",
+    version="0.5.0",
     description=(
         "Semantic caching proxy for LLM APIs using BGE-small embeddings. "
         "Exact-match tier + cosine similarity fallback, TTL invalidation, "
-        "bypass header, threshold-sweep evaluation. "
+        "bypass header, threshold-sweep and auto-tune evaluation. "
         "Mirrors the OpenAI /v1/chat/completions shape."
     ),
     lifespan=lifespan,
@@ -115,6 +119,7 @@ app.include_router(chat_router)
 # ---------------------------------------------------------------------------
 # Health + metrics + purge (unchanged from Phase 1)
 # ---------------------------------------------------------------------------
+
 
 @app.get("/health")
 async def health():
@@ -144,6 +149,29 @@ async def cache_purge(body: PurgeRequest):
 async def threshold_sweep(body: ThresholdSweepRequest):
     """Precision/recall/F1 at each requested threshold against the labeled pairs."""
     return ThresholdSweepResponse(results=run_threshold_sweep(body.thresholds))
+
+
+@app.post(
+    "/eval/auto-tune",
+    response_model=AutoTuneResponse,
+    dependencies=[Depends(require_admin_token)],
+)
+async def auto_tune(body: AutoTuneRequest):
+    """Sweep thresholds, pick the F1-optimal one, and surface the borderline pairs.
+
+    Developer aid: omits the threshold grid to use the documented default;
+    ties on F1 break toward the lower (higher-recall) threshold. The
+    borderline pairs are the labeled examples sitting within ±0.03 of the
+    pick — the concrete evidence behind the recommendation.
+    """
+    tune = run_auto_tune(body.thresholds)
+    best = tune["best"]
+    return AutoTuneResponse(
+        best_threshold=best.threshold if best else None,
+        best_f1=best.f1 if best else None,
+        results=tune["results"],
+        borderline=tune["borderline"],
+    )
 
 
 @app.get("/cache/entries", response_model=CacheEntriesResponse)

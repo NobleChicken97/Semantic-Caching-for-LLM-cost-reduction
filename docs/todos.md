@@ -1,6 +1,6 @@
 # TODO — Semantic Caching Layer for LLM Cost Reduction
 
-> **Last updated:** 2026-09-01 (session 3 — P0 recovery shipped, repo re-synced with remote)
+> **Last updated:** 2026-09-01 (session 4 — `/eval/auto-tune` shipped, P2 polish batch done)
 > **Status legend:** 🔴 = known bug · 🟡 = planned enhancement · 🟢 = nice-to-have / stretch · ✅ = done
 > **Priority:** 🔴 P0 (blocks demo) · 🟠 P1 (blocks live deploy / key stories) · 🟡 P2 (polish) · 🟢 P3 (whenever)
 
@@ -34,18 +34,18 @@ The two lost directories are restored, the working tree is verified end-to-end (
 ## 🟡 P2 — Polish
 
 - [x] **🟡 P2** Ruff `I001` import-sort warnings in tests/: ✅ re-checked 2026-09-01 session 3 with local ruff 0.16.4 — `ruff check src/ tests/ scripts/` passes clean with zero findings (the previously flagged warnings no longer fire; no fix needed).
-- [ ] **🟡 P2** `ruff format --check` is deliberately not gated in CI (16 files would need reformatting). Pick a session to run `ruff format src/ tests/ scripts/`, commit, and then enable the format check in `.github/workflows/ci.yml`.
+- [x] **🟡 P2** `ruff format` applied to the whole codebase (2026-09-01 session 4: 18 files reformatted, tests re-run green) and `ruff format --check src/ tests/ scripts/` is now gated in the CI lint job.
 - [x] **🟡 P2** Renamed `test_seeded_dataset_has_32_pairs` → `test_seeded_dataset_has_31_pairs` (2026-09-01 session 3; `tests/test_eval.py` 8/8 passing after rename).
 - [ ] **🟡 P2** Replace `_rough_token_count` (`len(text)//4` heuristic) with `tiktoken` for accuracy on paid-model rows. Mock traffic doesn't need it; BYOK free-tier traffic doesn't need it; matters only when someone proxies a paid model and wants the `estimated_cost_usd` to be honest.
 - [ ] **🟡 P2** Make the schema file/dir more discoverable: right now `data/labeled_test_pairs.json` exists but the `seed_test_pairs()` source-of-truth lives inline in `database.py`. Consider exporting a migration from the JSON on init so a fresh DB populated from JSON matches the canonical set.
-- [ ] **🟡 P2** Document the `MAX_SEMANTIC_SCAN_ENTRIES` warning as part of the README troubleshooting section (currently only in `docs/TECHNICAL_DETAIL.md` Known limitations and in the warning itself). One paragraph: "if you see this log line, here's what it means and how to plan the ANN swap."
-- [ ] **🟡 P2** Add a "what's new" section to the README pointing to `docs/progress.md` so visitors know there's a session-by-session history.
-- [ ] **🟡 P2** `requirements.txt` / `requirements-dev.txt` should declare a maximum version for the embedding-sensitive packages (`sentence-transformers`, `torch`) so a `pip install --upgrade` doesn't silently change the threshold curve. Today only floors are declared.
+- [x] **🟡 P2** Documented the `MAX_SEMANTIC_SCAN_ENTRIES` warning in a README **Troubleshooting** section (2026-09-01 session 4): what it means, that it's warn-only, and the two responses (shrink the scan / plan the ANN swap).
+- [x] **🟡 P2** Added a "What's new" pointer to `docs/progress.md` at the top of the README (2026-09-01 session 4).
+- [x] **🟡 P2** `requirements.txt` now caps the embedding-sensitive packages (2026-09-01 session 4): `sentence-transformers>=3.0.0,<6` and explicit `torch>=2.0,<3.0`. Ranges include every version in use (Docker/CI pin 2.5.1+cpu, local 2.13.0, ST 5.7.0 — curve re-verified identical on ST 5.7.0) while blocking silent future major bumps from shifting the threshold curve.
 
 ## 🟢 P3 — Nice-to-haves / stretch
 
 - [ ] **🟢 P3** **Stretch — integrate with a sibling project.** Wire this proxy in front of the RAG or Agent project; report before/after cost numbers over a fixed prompt set; add a chart to whichever sibling's docs.
-- [ ] **🟢 P3** **Stretch — auto-tune threshold.** Add a `/eval/auto-tune` endpoint that sweeps a configurable threshold list, picks the F1-optimal value, and prints the borderline pairs that drove the choice. (Doesn't need to be production-safe; it's a developer aid.)
+- [x] **🟢 P3** **Auto-tune threshold — DONE (2026-09-01 session 4).** `POST /eval/auto-tune`: sweeps a configurable threshold grid (documented default when omitted), picks the F1-optimal value (ties → lower threshold, favoring recall), and returns the borderline labeled pairs (±0.03 of the pick, nearest first, max 10). Admin-gated like the sweep; 9 new tests (unit + API), live-verified picking 0.85 @ F1 0.8571 on the seeded set.
 - [ ] **🟢 P3** **Stretch — circuit breaker** in `llm_client.py`. Bounded retries cover demo scale; a paid-tier deployment with sustained upstream failure would benefit. Implementation sketch: `circuitpybreaker` or a 30-line hand-rolled sliding-window failure counter with OPEN/HALF_OPEN/CLOSED states.
 - [ ] **🟢 P3** **Stretch — ANN index swap.** When `len(cache_entries)` exceeds the warn threshold sustainably, replace `_semantic_lookup`'s numpy loop with FAISS / sqlite-vec / pgvector. The function signature doesn't change; only the body.
 - [ ] **🟢 P3** **Stretch — distributed coalescing.** `asyncio.Lock` is per-process. Multi-worker / multi-instance deployments need Redis SETNX (or equivalent) on `prompt_hash`. Note in a comment at the lock site.
@@ -56,6 +56,7 @@ The two lost directories are restored, the working tree is verified end-to-end (
 
 ## ✅ Recently resolved (kept for context — see `progress.md` for details)
 
+- [x] **Session 4 (2026-09-01):** `/eval/auto-tune` shipped (app v0.5.0, 9 new tests → 123 total, live-verified); `ruff format` applied repo-wide + format check gated in CI; README Troubleshooting + What's-new sections; requirements upper bounds for torch/sentence-transformers; test-count 114→123 synced across README/LAUNCH_CHECKLIST.
 - [x] **P0 recovery complete (2026-09-01 session 3):** `routes/` + `static/index.html` restored (content-identical to remote), index repaired via `git add -A`, committed `f212ec2` and pushed — remote and local back in lockstep. Verified: 114/114 tests, uvicorn smoke (health/dashboard/MISS→HIT/metrics).
 - [x] **Threshold sweep re-verified (2026-09-01 session 3):** F1 still peaks at 0.85 against current HF Hub BGE weights — curve byte-for-byte matches `THRESHOLD_ANALYSIS.md`.
 

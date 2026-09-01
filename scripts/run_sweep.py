@@ -1,4 +1,5 @@
 """Run the official threshold sweep and print a markdown-ready table."""
+
 import os
 import sys
 import tempfile
@@ -23,7 +24,9 @@ results = run_threshold_sweep(THRESHOLDS)
 print("| Threshold | Precision | Recall | F1 |")
 print("|-----------|-----------|--------|-----|")
 for r in results:
-    print(f"| {r.threshold:.2f}      | {r.precision:.4f}   | {r.recall:.4f} | {r.f1:.4f} |")
+    print(
+        f"| {r.threshold:.2f}      | {r.precision:.4f}   | {r.recall:.4f} | {r.f1:.4f} |"
+    )
 
 print("\nPer-pair similarities (for borderline analysis):")
 scored = pair_similarities()

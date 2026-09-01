@@ -69,9 +69,7 @@ def main(argv: list[str]) -> int:
                 rule = {
                     "id": vuln_id,
                     "shortDescription": {"text": f"{vuln_id} affects {name}"},
-                    "helpUri": (
-                        f"https://osv.dev/vulnerability/{vuln_id}"
-                    ),
+                    "helpUri": (f"https://osv.dev/vulnerability/{vuln_id}"),
                 }
                 if desc:
                     rule["fullDescription"] = {"text": desc}

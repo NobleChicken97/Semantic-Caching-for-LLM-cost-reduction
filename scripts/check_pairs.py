@@ -1,4 +1,5 @@
 """One-off diagnostic: score candidate labeled pairs against BGE-small."""
+
 import os
 import sys
 
@@ -21,13 +22,25 @@ CANDIDATES = [
         "My laptop does not start when I press the power button.",
         1,
     ),
-    ("Recommend a good sci-fi book.", "Can you suggest a great science fiction novel?", 1),
+    (
+        "Recommend a good sci-fi book.",
+        "Can you suggest a great science fiction novel?",
+        1,
+    ),
     ("Hi", "Goodbye", 0),
     ("What's the weather in Tokyo?", "Who wrote the play Hamlet?", 0),
     ("def add(a, b): return a + b", "def multiply(a, b): return a * b", 0),
     ("Fix my bicycle tire.", "Translate 'good morning' to French.", 0),
-    ("Best programming language for beginners?", "Give me a brief history of the Roman Empire.", 0),
-    ("How do I bake chocolate chip cookies?", "How do I change a flat tire on a car?", 0),
+    (
+        "Best programming language for beginners?",
+        "Give me a brief history of the Roman Empire.",
+        0,
+    ),
+    (
+        "How do I bake chocolate chip cookies?",
+        "How do I change a flat tire on a car?",
+        0,
+    ),
 ]
 
 texts = []

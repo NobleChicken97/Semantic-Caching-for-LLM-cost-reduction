@@ -314,6 +314,7 @@ def _delete_entry(conn, entry_id: int) -> None:
     conn.execute("DELETE FROM cache_entries WHERE entry_id = ?", (entry_id,))
     conn.commit()
 
+
 def purge(entry_id: int | None = None) -> int:
     """Purge a single entry or the entire cache. Returns count deleted."""
     conn = get_connection()
@@ -330,6 +331,7 @@ def purge(entry_id: int | None = None) -> int:
         return cursor.rowcount
     finally:
         conn.close()
+
 
 def log_request(
     prompt_text: str,
@@ -410,9 +412,7 @@ def prune_old_logs(days: int = 30, *, now: float | None = None) -> int:
             """,
             (cutoff,),
         )
-        deleted = conn.execute(
-            "DELETE FROM request_log WHERE timestamp < ?", (cutoff,)
-        )
+        deleted = conn.execute("DELETE FROM request_log WHERE timestamp < ?", (cutoff,))
         conn.commit()
         return deleted.rowcount
     finally:
@@ -446,22 +446,26 @@ def get_metrics() -> dict[str, Any]:
     try:
         r_total, r_hits, r_tokens, r_cost = _rollup_totals(conn)
 
-        total = r_total + conn.execute(
-            "SELECT COUNT(*) FROM request_log"
-        ).fetchone()[0]
-        hits = r_hits + conn.execute(
-            "SELECT COUNT(*) FROM request_log WHERE outcome = 'HIT'"
-        ).fetchone()[0]
+        total = r_total + conn.execute("SELECT COUNT(*) FROM request_log").fetchone()[0]
+        hits = (
+            r_hits
+            + conn.execute(
+                "SELECT COUNT(*) FROM request_log WHERE outcome = 'HIT'"
+            ).fetchone()[0]
+        )
 
         hit_rate = hits / total if total > 0 else 0.0
 
-        cost_saved = r_cost + conn.execute(
-            """
+        cost_saved = (
+            r_cost
+            + conn.execute(
+                """
             SELECT COALESCE(SUM(estimated_cost_usd), 0)
               FROM request_log
              WHERE outcome = 'HIT'
             """
-        ).fetchone()[0]
+            ).fetchone()[0]
+        )
 
         hit_lat = conn.execute(
             """
@@ -481,13 +485,16 @@ def get_metrics() -> dict[str, Any]:
 
         # Phase 7: tokens-saved is the headline metric for BYOK free-tier
         # users — only HIT rows represent generation we didn't pay for again.
-        tokens_saved = r_tokens + conn.execute(
-            """
+        tokens_saved = (
+            r_tokens
+            + conn.execute(
+                """
             SELECT COALESCE(SUM(tokens_in + tokens_out), 0)
               FROM request_log
              WHERE outcome = 'HIT'
             """
-        ).fetchone()[0]
+            ).fetchone()[0]
+        )
 
         per_user_rows = conn.execute(
             """

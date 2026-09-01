@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 # Request models
 # ---------------------------------------------------------------------------
 
+
 class ChatMessage(BaseModel):
     role: str  # "system" | "user" | "assistant"
     content: str
@@ -53,6 +54,7 @@ class ChatCompletionRequest(BaseModel):
 # Response models (mirror OpenAI shape)
 # ---------------------------------------------------------------------------
 
+
 class UsageInfo(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -90,6 +92,7 @@ class ChatCompletionResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Metrics / purge models
 # ---------------------------------------------------------------------------
+
 
 class UserUsage(BaseModel):
     """Per-user aggregate (Phase 7): one row per derived user_id."""
@@ -135,9 +138,33 @@ class ThresholdSweepResponse(BaseModel):
     results: list[ThresholdResult]
 
 
+class AutoTuneRequest(BaseModel):
+    """Omit ``thresholds`` to sweep the documented default grid."""
+
+    thresholds: list[float] | None = None
+
+
+class BorderlinePair(BaseModel):
+    """A labeled pair sitting near the chosen threshold — the evidence
+    behind the auto-tune pick (see BORDERLINE_BAND in eval.py)."""
+
+    prompt_a: str
+    prompt_b: str
+    similarity: float
+    should_match: bool
+
+
+class AutoTuneResponse(BaseModel):
+    best_threshold: float | None = None
+    best_f1: float | None = None
+    results: list[ThresholdResult] = []
+    borderline: list[BorderlinePair] = []
+
+
 # ---------------------------------------------------------------------------
 # Dashboard models (Phase 5)
 # ---------------------------------------------------------------------------
+
 
 class CacheEntryOut(BaseModel):
     entry_id: int

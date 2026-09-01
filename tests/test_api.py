@@ -71,6 +71,7 @@ async def client(monkeypatch, tmp_path):
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestHealth:
     @pytest.mark.asyncio
     async def test_health_returns_ok(self, client):
@@ -154,7 +155,9 @@ class TestRequestCoalescing:
 
         calls = {"count": 0}
 
-        async def slow_mock_forward(request_body, *, client=None, api_key=None, base_url=None):
+        async def slow_mock_forward(
+            request_body, *, client=None, api_key=None, base_url=None
+        ):
             calls["count"] += 1
             await asyncio.sleep(0.25)  # simulate real upstream latency
             return _mock_response(request_body), 0.25
@@ -180,12 +183,16 @@ class TestUpstreamErrors:
     """Review fix #4 — upstream failures become OpenAI-shaped API errors."""
 
     @pytest.mark.asyncio
-    async def test_upstream_http_status_error_passes_status_through(self, client, monkeypatch):
+    async def test_upstream_http_status_error_passes_status_through(
+        self, client, monkeypatch
+    ):
         import httpx
 
         from proxy.routes import chat as chat_module
 
-        async def raise_status(request_body, *, client=None, api_key=None, base_url=None):
+        async def raise_status(
+            request_body, *, client=None, api_key=None, base_url=None
+        ):
             req = httpx.Request("POST", "https://upstream.test/v1/chat/completions")
             resp = httpx.Response(429, request=req)
             raise httpx.HTTPStatusError("rate limited", request=req, response=resp)
@@ -218,12 +225,16 @@ class TestUpstreamErrors:
         assert data["error"]["type"] == "upstream_connection_error"
 
     @pytest.mark.asyncio
-    async def test_failed_request_writes_no_cache_entry_but_logs_error(self, client, monkeypatch):
+    async def test_failed_request_writes_no_cache_entry_but_logs_error(
+        self, client, monkeypatch
+    ):
         import httpx
 
         from proxy.routes import chat as chat_module
 
-        async def raise_status(request_body, *, client=None, api_key=None, base_url=None):
+        async def raise_status(
+            request_body, *, client=None, api_key=None, base_url=None
+        ):
             req = httpx.Request("POST", "https://upstream.test/v1/chat/completions")
             resp = httpx.Response(500, request=req)
             raise httpx.HTTPStatusError("boom", request=req, response=resp)
@@ -353,7 +364,9 @@ class TestUpstreamRetries:
         try:
             from proxy.llm_client import forward_to_llm
 
-            stub = self._stub([httpx.ConnectError("refused"), httpx.ConnectError("refused")])
+            stub = self._stub(
+                [httpx.ConnectError("refused"), httpx.ConnectError("refused")]
+            )
             with pytest.raises(httpx.ConnectError):
                 await forward_to_llm(self.PAYLOAD, client=stub, api_key="sk-t")
             assert stub.calls == 2
@@ -413,7 +426,9 @@ class TestUpstreamRetries:
 
 class TestUpstreamErrorDetail:
     @pytest.mark.asyncio
-    async def test_upstream_error_message_includes_upstream_detail(self, client, monkeypatch):
+    async def test_upstream_error_message_includes_upstream_detail(
+        self, client, monkeypatch
+    ):
         """The upstream's own diagnostic text rides along in our error body."""
         import httpx
 
@@ -424,7 +439,14 @@ class TestUpstreamErrorDetail:
             resp = httpx.Response(
                 503,
                 request=req,
-                json=[{"error": {"code": 503, "message": "This model is currently experiencing high demand."}}],
+                json=[
+                    {
+                        "error": {
+                            "code": 503,
+                            "message": "This model is currently experiencing high demand.",
+                        }
+                    }
+                ],
             )
             raise httpx.HTTPStatusError("svc", request=req, response=resp)
 
@@ -462,8 +484,14 @@ class TestUpstreamPayloadFidelity:
         assert resp.status_code == 200
         payload = body_spy["payload"]
         assert set(payload.keys()) == {"model", "messages"}
-        for banned in ("temperature", "top_p", "n", "stream",
-                       "presence_penalty", "frequency_penalty"):
+        for banned in (
+            "temperature",
+            "top_p",
+            "n",
+            "stream",
+            "presence_penalty",
+            "frequency_penalty",
+        ):
             assert banned not in payload
 
     @pytest.mark.asyncio
@@ -543,6 +571,50 @@ class TestThresholdSweepEndpoint:
         assert resp.status_code == 422
 
 
+class TestAutoTuneEndpoint:
+    @pytest.mark.asyncio
+    async def test_auto_tune_seeded_data_shape(self, client):
+        """Default grid: a best pick plus per-threshold results and borderline pairs."""
+        resp = await client.post("/eval/auto-tune", json={})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data.keys()) == {
+            "best_threshold",
+            "best_f1",
+            "results",
+            "borderline",
+        }
+        assert data["best_threshold"] is not None
+        assert 0.0 <= data["best_f1"] <= 1.0
+        for r in data["results"]:
+            assert set(r.keys()) == {"threshold", "precision", "recall", "f1"}
+        for p in data["borderline"]:
+            assert set(p.keys()) == {
+                "prompt_a",
+                "prompt_b",
+                "similarity",
+                "should_match",
+            }
+
+    @pytest.mark.asyncio
+    async def test_auto_tune_explicit_thresholds(self, client):
+        resp = await client.post("/eval/auto-tune", json={"thresholds": [0.50]})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["results"]) == 1
+        assert data["results"][0]["threshold"] == 0.50
+        assert data["best_threshold"] == 0.50
+
+    @pytest.mark.asyncio
+    async def test_auto_tune_empty_thresholds_returns_null_best(self, client):
+        resp = await client.post("/eval/auto-tune", json={"thresholds": []})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["best_threshold"] is None
+        assert data["results"] == []
+        assert data["borderline"] == []
+
+
 class TestCacheEntriesEndpoint:
     @pytest.mark.asyncio
     async def test_lists_stored_entries_newest_first(self, client):
@@ -560,8 +632,14 @@ class TestCacheEntriesEndpoint:
         }
         for e in entries:
             assert set(e.keys()) == {
-                "entry_id", "prompt_text", "model_used", "user_id",
-                "created_at", "expires_at", "hit_count", "last_hit_at",
+                "entry_id",
+                "prompt_text",
+                "model_used",
+                "user_id",
+                "created_at",
+                "expires_at",
+                "hit_count",
+                "last_hit_at",
             }
 
     @pytest.mark.asyncio
@@ -618,7 +696,9 @@ class TestProviderAllowlist:
         resp = await client.post(
             "/v1/chat/completions",
             json=PROMPT_WATER,
-            headers={"X-LLM-Base-URL": "https://generativelanguage.googleapis.com/v1beta/openai/"},
+            headers={
+                "X-LLM-Base-URL": "https://generativelanguage.googleapis.com/v1beta/openai/"
+            },
         )
         assert resp.status_code == 200
         # Trailing slash normalized to canonical form.
@@ -662,7 +742,9 @@ class TestProviderAllowlist:
         )
 
     @pytest.mark.asyncio
-    async def test_omitted_selection_uses_configured_default(self, client, upstream_spy):
+    async def test_omitted_selection_uses_configured_default(
+        self, client, upstream_spy
+    ):
         resp = await client.post("/v1/chat/completions", json=PROMPT_WATER)
         assert resp.status_code == 200
         assert upstream_spy["base_url"] is None
@@ -730,7 +812,9 @@ class TestByokKeyForwarding:
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_bearer_prefix_without_token_counts_as_missing(self, client, real_mode):
+    async def test_bearer_prefix_without_token_counts_as_missing(
+        self, client, real_mode
+    ):
         resp = await client.post(
             "/v1/chat/completions",
             json=PROMPT_WATER,
@@ -777,7 +861,9 @@ class TestSharedHttpClient:
 
         received = {}
 
-        async def spy_forward(request_body, *, client=None, api_key=None, base_url=None):
+        async def spy_forward(
+            request_body, *, client=None, api_key=None, base_url=None
+        ):
             received["client"] = client
             return _mock_response(request_body), 0.02
 
@@ -799,20 +885,30 @@ class TestMultiUserIsolation:
 
     @pytest.mark.asyncio
     async def test_identical_prompt_two_users_no_cross_hit(self, client):
-        r1 = await client.post("/v1/chat/completions", json=PROMPT_FRANCE, headers=self.ALICE)
+        r1 = await client.post(
+            "/v1/chat/completions", json=PROMPT_FRANCE, headers=self.ALICE
+        )
         assert r1.json()["cache_metadata"]["outcome"] == "MISS"
 
         # Same exact prompt from Bob must MISS — Alice's entry is invisible.
-        r2 = await client.post("/v1/chat/completions", json=PROMPT_FRANCE, headers=self.BOB)
+        r2 = await client.post(
+            "/v1/chat/completions", json=PROMPT_FRANCE, headers=self.BOB
+        )
         assert r2.json()["cache_metadata"]["outcome"] == "MISS"
 
         # Both now HIT their OWN entries on repeat.
-        r3 = await client.post("/v1/chat/completions", json=PROMPT_FRANCE, headers=self.ALICE)
-        r4 = await client.post("/v1/chat/completions", json=PROMPT_FRANCE, headers=self.BOB)
+        r3 = await client.post(
+            "/v1/chat/completions", json=PROMPT_FRANCE, headers=self.ALICE
+        )
+        r4 = await client.post(
+            "/v1/chat/completions", json=PROMPT_FRANCE, headers=self.BOB
+        )
         assert r3.json()["cache_metadata"]["outcome"] == "HIT"
         assert r4.json()["cache_metadata"]["outcome"] == "HIT"
-        assert r3.json()["choices"][0]["message"]["content"] == \
-            r1.json()["choices"][0]["message"]["content"]
+        assert (
+            r3.json()["choices"][0]["message"]["content"]
+            == r1.json()["choices"][0]["message"]["content"]
+        )
 
         # Two physically distinct entries for the same canonical prompt.
         entries = (await client.get("/cache/entries")).json()["entries"]
@@ -828,11 +924,16 @@ class TestMultiUserIsolation:
 
         entries = (await client.get("/cache/entries")).json()["entries"]
         ids = {e["user_id"] for e in entries}
-        assert ids == {derive_user_id("sk-alice-test-key"), derive_user_id("sk-bob-test-key")}
+        assert ids == {
+            derive_user_id("sk-alice-test-key"),
+            derive_user_id("sk-bob-test-key"),
+        }
 
     @pytest.mark.asyncio
     async def test_paraphrase_does_not_cross_users(self, client):
-        await client.post("/v1/chat/completions", json=PROMPT_FRANCE, headers=self.ALICE)
+        await client.post(
+            "/v1/chat/completions", json=PROMPT_FRANCE, headers=self.ALICE
+        )
         resp = await client.post(
             "/v1/chat/completions",
             json=PROMPT_FRANCE_PARAPHRASE,
@@ -897,7 +998,8 @@ class TestLogsRecentEndpoint:
         await client.post("/v1/chat/completions", json=PROMPT_FRANCE)
         await client.post("/v1/chat/completions", json=PROMPT_FRANCE)  # HIT
         await client.post(
-            "/v1/chat/completions", json=PROMPT_WATER,
+            "/v1/chat/completions",
+            json=PROMPT_WATER,
             headers={"X-Cache-Bypass": "true"},
         )  # BYPASS
 

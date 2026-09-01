@@ -1,4 +1,5 @@
 """Export seed_test_pairs() to data/labeled_test_pairs.json for reproducibility."""
+
 import json
 import os
 import sys
@@ -46,7 +47,9 @@ data = {
     ],
 }
 
-out_path = os.path.join(os.path.dirname(__file__), "..", "data", "labeled_test_pairs.json")
+out_path = os.path.join(
+    os.path.dirname(__file__), "..", "data", "labeled_test_pairs.json"
+)
 os.makedirs(os.path.dirname(out_path), exist_ok=True)
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)

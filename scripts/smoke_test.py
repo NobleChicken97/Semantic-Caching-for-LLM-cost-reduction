@@ -85,8 +85,11 @@ def main() -> int:
         print("Server is healthy.\n")
 
         purge = client.post(f"{BASE}/cache/purge", json={}, timeout=REQUEST_TIMEOUT)
-        check("purge endpoint reachable (auth off)", purge.status_code == 200,
-              f"status={purge.status_code}")
+        check(
+            "purge endpoint reachable (auth off)",
+            purge.status_code == 200,
+            f"status={purge.status_code}",
+        )
 
         baseline = client.get(f"{BASE}/metrics", timeout=REQUEST_TIMEOUT).json()
         t0_requests = baseline["total_requests"]
@@ -95,79 +98,131 @@ def main() -> int:
 
         # --- 1. Fresh prompt: MISS + OpenAI shape -------------------------
         r1 = chat(client, unique)
-        check("fresh prompt returns 200", r1.status_code == 200,
-              f"status={r1.status_code} body={r1.text[:200]}")
+        check(
+            "fresh prompt returns 200",
+            r1.status_code == 200,
+            f"status={r1.status_code} body={r1.text[:200]}",
+        )
         b1 = r1.json()
-        required_keys = {"id", "object", "created", "model", "choices", "usage",
-                         "cache_metadata"}
-        check("response carries full OpenAI contract", required_keys <= set(b1),
-              f"missing={required_keys - set(b1)}")
+        required_keys = {
+            "id",
+            "object",
+            "created",
+            "model",
+            "choices",
+            "usage",
+            "cache_metadata",
+        }
+        check(
+            "response carries full OpenAI contract",
+            required_keys <= set(b1),
+            f"missing={required_keys - set(b1)}",
+        )
         check("object == chat.completion", b1.get("object") == "chat.completion")
-        check("choice has assistant role", b1["choices"][0]["message"]["role"] == "assistant")
+        check(
+            "choice has assistant role",
+            b1["choices"][0]["message"]["role"] == "assistant",
+        )
         check("answer text non-empty", len(b1["choices"][0]["message"]["content"]) > 0)
-        check("first call is MISS", b1["cache_metadata"]["outcome"] == "MISS",
-              str(b1["cache_metadata"]))
+        check(
+            "first call is MISS",
+            b1["cache_metadata"]["outcome"] == "MISS",
+            str(b1["cache_metadata"]),
+        )
         check("model echoed back correctly", b1["model"] == "gpt-3.5-turbo")
 
         # --- 2. Exact repeat: HIT ------------------------------------------
         r2 = chat(client, unique)
         b2 = r2.json()
-        check("exact repeat is HIT", b2["cache_metadata"]["outcome"] == "HIT",
-              str(b2.get("cache_metadata")))
-        check("exact repeat similarity == 1.0",
-              b2["cache_metadata"].get("similarity_score") == 1.0,
-              str(b2["cache_metadata"]))
-        check("cached answer identical to original",
-              b2["choices"][0]["message"]["content"]
-              == b1["choices"][0]["message"]["content"])
+        check(
+            "exact repeat is HIT",
+            b2["cache_metadata"]["outcome"] == "HIT",
+            str(b2.get("cache_metadata")),
+        )
+        check(
+            "exact repeat similarity == 1.0",
+            b2["cache_metadata"].get("similarity_score") == 1.0,
+            str(b2["cache_metadata"]),
+        )
+        check(
+            "cached answer identical to original",
+            b2["choices"][0]["message"]["content"]
+            == b1["choices"][0]["message"]["content"],
+        )
 
         # --- 3. Paraphrase: semantic HIT ------------------------------------
         r3 = chat(client, "please tell me the capital of France")
         b3 = r3.json()
-        check("paraphrase is semantic HIT", b3["cache_metadata"]["outcome"] == "HIT",
-              str(b3.get("cache_metadata")))
+        check(
+            "paraphrase is semantic HIT",
+            b3["cache_metadata"]["outcome"] == "HIT",
+            str(b3.get("cache_metadata")),
+        )
         score = b3["cache_metadata"].get("similarity_score") or 0.0
         check("paraphrase similarity >= 0.80", score >= 0.80, f"score={score}")
 
         # --- 4. Cross-model isolation ---------------------------------------
         r4 = chat(client, unique, model="gpt-4o-mini")
         b4 = r4.json()
-        check("same prompt, other model is MISS (key isolation)",
-              b4["cache_metadata"]["outcome"] == "MISS",
-              str(b4.get("cache_metadata")))
-        check("cross-model response claims requested model", b4["model"] == "gpt-4o-mini")
+        check(
+            "same prompt, other model is MISS (key isolation)",
+            b4["cache_metadata"]["outcome"] == "MISS",
+            str(b4.get("cache_metadata")),
+        )
+        check(
+            "cross-model response claims requested model", b4["model"] == "gpt-4o-mini"
+        )
 
         # --- 5. Bypass header -------------------------------------------------
         r5 = chat(client, unique, headers={"X-Cache-Bypass": "true"})
         b5 = r5.json()
-        check("bypass header forces BYPASS", b5["cache_metadata"]["outcome"] == "BYPASS",
-              str(b5.get("cache_metadata")))
+        check(
+            "bypass header forces BYPASS",
+            b5["cache_metadata"]["outcome"] == "BYPASS",
+            str(b5.get("cache_metadata")),
+        )
 
         # --- 6. Metrics accounting (5 requests so far: MISS, HIT, paraphrase
         #     HIT, cross-model MISS, BYPASS) -----------------------------------
         m = client.get(f"{BASE}/metrics", timeout=REQUEST_TIMEOUT).json()
-        check("metrics counted exactly our 5 requests",
-              m["total_requests"] == t0_requests + 5,
-              f"before={t0_requests} after={m['total_requests']}")
+        check(
+            "metrics counted exactly our 5 requests",
+            m["total_requests"] == t0_requests + 5,
+            f"before={t0_requests} after={m['total_requests']}",
+        )
         check("hit_rate > 0", m["hit_rate"] > 0, f"hit_rate={m['hit_rate']}")
 
         # --- 7. Logs recent -------------------------------------------------------
-        logs = client.get(f"{BASE}/logs/recent?limit=50", timeout=REQUEST_TIMEOUT).json()["logs"]
+        logs = client.get(
+            f"{BASE}/logs/recent?limit=50", timeout=REQUEST_TIMEOUT
+        ).json()["logs"]
         ours = logs[:5]  # exactly the requests made since the metrics baseline
         outcomes = {entry["outcome"] for entry in ours}
-        check("logs contain HIT, MISS and BYPASS rows",
-              {"HIT", "MISS", "BYPASS"} <= outcomes, f"got={outcomes}")
-        check("all logged latencies are non-negative",
-              all(entry["latency_ms"] >= 0 for entry in ours))
+        check(
+            "logs contain HIT, MISS and BYPASS rows",
+            {"HIT", "MISS", "BYPASS"} <= outcomes,
+            f"got={outcomes}",
+        )
+        check(
+            "all logged latencies are non-negative",
+            all(entry["latency_ms"] >= 0 for entry in ours),
+        )
 
         # --- 8. Purge effectiveness -------------------------------------------------
-        purged = client.post(f"{BASE}/cache/purge", json={}, timeout=REQUEST_TIMEOUT).json()
-        check("purge removed at least our entries", purged["purged_count"] >= 2,
-              str(purged))
+        purged = client.post(
+            f"{BASE}/cache/purge", json={}, timeout=REQUEST_TIMEOUT
+        ).json()
+        check(
+            "purge removed at least our entries",
+            purged["purged_count"] >= 2,
+            str(purged),
+        )
         r_after = chat(client, unique)
-        check("purged prompt misses again",
-              r_after.json()["cache_metadata"]["outcome"] == "MISS",
-              str(r_after.json().get("cache_metadata")))
+        check(
+            "purged prompt misses again",
+            r_after.json()["cache_metadata"]["outcome"] == "MISS",
+            str(r_after.json().get("cache_metadata")),
+        )
 
     print(f"\nSmoke summary: {_passed} passed, {len(_failures)} failed")
     if _failures:
