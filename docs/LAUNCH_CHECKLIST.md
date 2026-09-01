@@ -73,7 +73,7 @@
 
 ### B2. Gemini key
 1. https://aistudio.google.com → sign in with Google → **Get API key** → Create (no GCP billing needed)
-2. Note the current Flash model ID (e.g. `gemini-2.5-flash`) and your live quotas: AI Studio → **rate-limit** view
+2. Note the current Flash model ID (use `gemini-3.6-flash` — `gemini-2.5-flash` shuts down 2026-10-16) and your live quotas: AI Studio → **rate-limit** view
    - Free tier is roughly **10 RPM / few-hundred requests-per-day** for Flash-class (per *project*, shared by all keys in that project)
    - ⚠️ **Free-tier prompts may be used by Google to improve products** — fine for demo traffic, not for anything sensitive
 3. ⚠️ **TIME-SENSITIVE:** new AI Studio keys default to "**auth keys**"; Google plans to reject *standard*-key requests in **September 2026**. Check your key's type in AI Studio and follow their migration prompt if shown.
