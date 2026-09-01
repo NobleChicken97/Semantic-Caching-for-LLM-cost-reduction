@@ -15,6 +15,33 @@
 
 ---
 
+## 2026-09-01 (session 3) — P0 recovery shipped: repo restored, verified, and re-synced with remote
+
+Context: execution session for the P0 plan recorded in `todos.md`. Goal was to close the missing-files bug for good and get local/remote back in lockstep, without changing any application code.
+
+**What was worked on**
+- **State discovery (better than expected):** the Desktop `.git` was already repaired — `git log`/`fetch` worked and HEAD sat exactly at `origin/main` @ `0f8f7d7` (session 2 had recorded it as a non-functional stub; the repair had evidently landed since). The two lost directories (`src/proxy/routes/`, `src/proxy/static/index.html`) were already present on disk too. The only anomaly was the index: every tracked file staged as deleted with the working tree untracked — the known "copied `.git` without an index file" signature from session 2's Way 2 note.
+- **Verified the restored files against the remote blobs:** `routes/chat.py` and `static/index.html` are content-identical to `origin/main` (differences are CRLF line-ending noise only, confirmed via CR-stripped `cmp`); `routes/__init__.py` byte-identical.
+- **Repaired the index:** `git add -A`, then inspected the staged delta vs `origin/main` — exactly the intended docs set (README/LAUNCH_CHECKLIST test-count fixes, new `design.md`/`plan.md`/`prod.md`, rewritten `progress.md`/`report.md`/`todos.md`, `skills2use.md` moved root → `docs/`) and zero unintended changes. Junk files (`cache.db`, `.coverage`, `coverage.xml`, `.pytest_cache`) correctly stayed ignored.
+- **Full verification run:** `python -m pytest tests/ -q` → **114 passed in 93.4 s** (Python 3.11.9). Live uvicorn smoke (MOCK_LLM=true, temp DB): `/health` → `{"status": "ok", "phase": 7}`, `/dashboard` → 200, exact prompt → MISS, paraphrase → **HIT (sim 0.985)**, `/metrics` showed correct hit-rate/tokens-saved accounting.
+- **Committed `f212ec2` "restore routes and dashboard, sync docs after onedrive recovery" and pushed to `origin/main`** — remote and local are back in lockstep; the OneDrive loss saga is closed.
+- **P1 threshold re-verification:** `python scripts/run_sweep.py` against the current HF Hub BGE weights reproduced the documented curve exactly — F1 still peaks at the default **0.85 (F1 = 0.8571)**, all seven thresholds match `THRESHOLD_ANALYSIS.md` to the fourth decimal, borderline pairs unchanged (antonym 0.8643, paraphrase 0.8599, code 0.8449). No re-pin or doc re-justification needed.
+- **P2 cleanups:** ruff 0.16.4 now passes clean across `src/ tests/ scripts/` with zero findings (the 10 `I001` warnings from session 2 no longer fire — nothing to fix); renamed stale `test_seeded_dataset_has_32_pairs` → `test_seeded_dataset_has_31_pairs` (eval tests 8/8 after rename; total test count unchanged at 114).
+
+**What was fixed / built / decided**
+- No application code changed — the recovery was restore-only, exactly as planned. Code diff vs remote `main` is empty outside docs/tests.
+- Decision: push was executed per the standing P0 instruction ("commit and push so remote and local stay in lockstep").
+- Docs hygiene: `todos.md` P0 section collapsed to a resolved summary (restore instructions preserved in `progress.md` session 2); P1 sweep item and two P2 items marked done with evidence.
+
+**Bugs found + root cause + fix**
+- None new. (The staged-deletions index was the last residue of the OneDrive move; fixed via `git add -A` as session 2 prescribed.)
+
+**Open questions / unresolved**
+- Remaining P1 items are owner decisions / live-deploy steps: Render Blueprint apply + BYOK runbook with two real keys, `LICENSE` (copyright-name decision), OneDrive remnant cleanup (safe to archive/delete now that remote and local are in lockstep — but keep until the owner confirms the push).
+- Remaining P2/P3 items unchanged (see `todos.md`).
+
+---
+
 ## 2026-09-01 (session 2) — Deep verification: root cause found, recovery proven
 
 Context: follow-up to the morning's docs audit. This session ran the suite, traced the missing files to their origin, verified recovery sources, and re-established the full git history.

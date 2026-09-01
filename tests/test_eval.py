@@ -136,7 +136,7 @@ class TestThresholdSweep:
 
 
 class TestSeededDataset:
-    def test_seeded_dataset_has_32_pairs(self):
+    def test_seeded_dataset_has_31_pairs(self):
         """The expanded labeled set meets the PRD minimum of 20-30 pairs."""
         from proxy.database import seed_test_pairs
         from proxy.eval import load_labeled_pairs

@@ -1,43 +1,23 @@
 # TODO — Semantic Caching Layer for LLM Cost Reduction
 
-> **Last updated:** 2026-09-01 (verification pass)
+> **Last updated:** 2026-09-01 (session 3 — P0 recovery shipped, repo re-synced with remote)
 > **Status legend:** 🔴 = known bug · 🟡 = planned enhancement · 🟢 = nice-to-have / stretch · ✅ = done
 > **Priority:** 🔴 P0 (blocks demo) · 🟠 P1 (blocks live deploy / key stories) · 🟡 P2 (polish) · 🟢 P3 (whenever)
 
 ---
 
-## 🔴 P0 — Known bug (blocks demo today)
+## 🔴 P0 — Known bug — ✅ RESOLVED 2026-09-01 session 3 (was: blocks demo)
 
-One real issue, fully diagnosed and verified recoverable (root cause: folder move out of OneDrive lost two directories; see `progress.md` 2026-09-01 session 2). All three restore sources verified byte-identical: GitHub remote `main`, the OneDrive remnant copy, and the extracted remote tarball (which passed 114/114 tests).
+The two lost directories are restored, the working tree is verified end-to-end (114/114 tests + live uvicorn smoke), and local `main` is committed and pushed in lockstep with remote (`f212ec2`). See `progress.md` 2026-09-01 session 3 for the verification evidence. Kept for context:
 
-- [ ] **🔴 P0** Restore the two lost directories. Two verified ways:
-
-  **Way 1 — plain file copy, no git involved (simplest, verified identical files):**
-  ```powershell
-  $src = "C:\Users\arpan.ARPAN\OneDrive\Desktop\projects\Semantic caching layer for LLM cost reduction\src\proxy"
-  Copy-Item "$src\routes" "src\proxy\routes" -Recurse
-  Copy-Item "$src\static" "src\proxy\static" -Recurse
-  Remove-Item "src\proxy\routes\__pycache__" -Recurse -Force -ErrorAction SilentlyContinue
-  ```
-  (The last line drops the stale OneDrive `__pycache__` that rides along; harmless either way — Python recompiles on mtime mismatch.)
-  This brings back three files: `routes/chat.py` (the entire `POST /v1/chat/completions` handler: BYOK key extraction, user_id derivation, provider resolution, two-tier lookup, coalescing, `forward_to_llm`, response shaping, `_estimate_cost`, log writes), `routes/__init__.py` (package marker), and `static/index.html` (the single-page Chart.js dashboard: metrics cards, HIT/MISS doughnut, latency bars, per-user savings table, cache browser with purge, threshold-sweep runner, live request log). Alternative source with the same bytes: `git clone https://github.com/NobleChicken97/Semantic-Caching-for-LLM-cost-reduction` anywhere and copy from there.
-
-  **Way 2 — repair the local repo first, then restore via git (needed anyway before the next commit):**
-  The Desktop `.git` is a non-functional stub (missing `refs/` + `objects/`; git rejects it with "not a git repository" — verified). The OneDrive remnant's `.git` is the only local copy of the history and is functional after this session's `HEAD`/`config` repair:
-  ```powershell
-  Remove-Item -Recurse -Force .git
-  Copy-Item "C:\Users\arpan.ARPAN\OneDrive\Desktop\projects\Semantic caching layer for LLM cost reduction\.git" ".git" -Recurse
-  git log --oneline -3        # expect: 0f8f7d7, 6791551, b7d588e (11 commits total)
-  git checkout origin/main -- src/proxy/routes src/proxy/static
-  ```
-  Note: the copied `.git` has no `index` file, so the first `git status` will look odd (everything untracked/deleted). Resolve with `git add -A` before committing — the resulting commit's tree will equal remote `main` + today's docs edits.
-- [ ] **🔴 P0** Verify after restore (acceptance):
+- [x] **🔴 P0** Restore the two lost directories (`src/proxy/routes/`, `src/proxy/static/index.html`). Done 2026-09-01 session 3: files restored and verified content-identical to remote `main` (CRLF noise only). The restore routes (file copy from the OneDrive remnant, or checkout from repaired `.git`) are recorded in `progress.md` session 2 if ever needed again.
+- [x] **🔴 P0** Verify after restore (acceptance): 2026-09-01 session 3 — `python -m pytest tests/ -q` → **114 passed in 93.4 s**; uvicorn boot → `/health` = `{"status": "ok", "phase": 7}`, `/dashboard` = 200, exact MISS → paraphrase HIT (sim 0.985), `/metrics` accounting correct.
   ```powershell
   python -m pytest tests/ -q      # expect: 114 passed
   $env:MOCK_LLM = "true"; python -m uvicorn src.proxy.main:app --host 127.0.0.1 --port 8000
   # /health -> {"status": "ok", "phase": 7}; /dashboard -> 200 with the four tabs
   ```
-- [ ] **🔴 P0** Rebuild the local git repo state: after Way 2 above, `git status` shows the working tree vs `origin/main` — expect only today's docs edits + the README/LAUNCH_CHECKLIST test-count fixes + the restored files as new. Commit and push so remote and local stay in lockstep (remote is also missing the root `skills2use.md` and today's docs rewrite).
+- [x] **🔴 P0** Rebuild the local git repo state: the Desktop `.git` turned out to be already repaired (HEAD @ `0f8f7d7` = remote `main`; git log/fetch functional). The odd staged-deletions index was resolved with `git add -A` → staged delta vs `origin/main` was exactly the docs edits + restored files. Committed as `f212ec2` "restore routes and dashboard, sync docs after onedrive recovery" and pushed to `origin/main`.
 
 > Why not just re-download the whole repo? The Desktop tree is otherwise identical to remote `main` (verified by full content diff — the 25 hash-flagged files are line-ending noise only), so a targeted checkout loses nothing and keeps the working tree's docs/ (newer than remote) intact.
 
@@ -47,16 +27,15 @@ One real issue, fully diagnosed and verified recoverable (root cause: folder mov
   - Generate `USER_ID_PEPPER` and `ADMIN_TOKEN` (32-byte hex each, never rotate); set as Render env secrets.
   - With two real keys (Alice via OpenRouter free model, Bob via Gemini flash), confirm: MISS → HIT for Alice; MISS → HIT for Bob (different `user_id`s in `/cache/entries`); keyless → 401; non-allowlisted `X-LLM-Base-URL` → 400; dashboard shows both users accumulating independently.
   - Acceptance: public URL `/health` returns 200; the BYOK runbook's 4 checks all pass.
-- [ ] **🟠 P1** Re-measure threshold curve against current BGE weights on the HF Hub.
-  - `python scripts/run_sweep.py` (or hit `POST /eval/threshold-sweep`) and confirm F1 still peaks at 0.85. If the F1 peak has shifted, decide whether to (a) re-pin the BGE weights in the Dockerfile to the prior version, or (b) re-justify the new default in `docs/THRESHOLD_ANALYSIS.md` and update README.
+- [x] **🟠 P1** Re-measure threshold curve against current BGE weights on the HF Hub. ✅ Done 2026-09-01 session 3: `python scripts/run_sweep.py` reproduced the documented curve exactly — F1 still peaks at the default **0.85 (F1=0.8571)**, borderline pairs unchanged (antonym pair 0.8643, code pair 0.8449). No re-pin or re-justification needed.
 - [ ] **🟠 P1** Add the `LICENSE` file (MIT) — pending copyright-owner name decision from you.
 - [ ] **🟠 P1** Decide the fate of the OneDrive remnant copy (`C:\Users\arpan.ARPAN\OneDrive\Desktop\projects\Semantic caching layer for LLM cost reduction`): it holds the only local git history (11 commits, now functional after HEAD/config repair) — keep until the Desktop repo has been re-synced from remote and verified, then archive/delete to avoid future confusion.
 
 ## 🟡 P2 — Polish
 
-- [ ] **🟡 P2** Run `python -m ruff check --fix tests/` to clear the 10 `I001` import-sort warnings flagged by local ruff 0.16.4 (CI's `ruff>=0.6.0` floor passes clean; these are newer-linter-only, auto-fixable, zero-risk).
+- [x] **🟡 P2** Ruff `I001` import-sort warnings in tests/: ✅ re-checked 2026-09-01 session 3 with local ruff 0.16.4 — `ruff check src/ tests/ scripts/` passes clean with zero findings (the previously flagged warnings no longer fire; no fix needed).
 - [ ] **🟡 P2** `ruff format --check` is deliberately not gated in CI (16 files would need reformatting). Pick a session to run `ruff format src/ tests/ scripts/`, commit, and then enable the format check in `.github/workflows/ci.yml`.
-- [ ] **🟡 P2** Rename `test_seeded_dataset_has_32_pairs` → the set has 31 pairs (the test asserts `>= 30`, so it passes; the name is stale — verified by AST count and `data/labeled_test_pairs.json`'s `"count": 31`).
+- [x] **🟡 P2** Renamed `test_seeded_dataset_has_32_pairs` → `test_seeded_dataset_has_31_pairs` (2026-09-01 session 3; `tests/test_eval.py` 8/8 passing after rename).
 - [ ] **🟡 P2** Replace `_rough_token_count` (`len(text)//4` heuristic) with `tiktoken` for accuracy on paid-model rows. Mock traffic doesn't need it; BYOK free-tier traffic doesn't need it; matters only when someone proxies a paid model and wants the `estimated_cost_usd` to be honest.
 - [ ] **🟡 P2** Make the schema file/dir more discoverable: right now `data/labeled_test_pairs.json` exists but the `seed_test_pairs()` source-of-truth lives inline in `database.py`. Consider exporting a migration from the JSON on init so a fresh DB populated from JSON matches the canonical set.
 - [ ] **🟡 P2** Document the `MAX_SEMANTIC_SCAN_ENTRIES` warning as part of the README troubleshooting section (currently only in `docs/TECHNICAL_DETAIL.md` Known limitations and in the warning itself). One paragraph: "if you see this log line, here's what it means and how to plan the ANN swap."
@@ -76,6 +55,9 @@ One real issue, fully diagnosed and verified recoverable (root cause: folder mov
 ---
 
 ## ✅ Recently resolved (kept for context — see `progress.md` for details)
+
+- [x] **P0 recovery complete (2026-09-01 session 3):** `routes/` + `static/index.html` restored (content-identical to remote), index repaired via `git add -A`, committed `f212ec2` and pushed — remote and local back in lockstep. Verified: 114/114 tests, uvicorn smoke (health/dashboard/MISS→HIT/metrics).
+- [x] **Threshold sweep re-verified (2026-09-01 session 3):** F1 still peaks at 0.85 against current HF Hub BGE weights — curve byte-for-byte matches `THRESHOLD_ANALYSIS.md`.
 
 - [x] Phase 0 — repo restructure (`src/` layout, root `.gitignore`, `pyproject.toml [project]`, `Makefile`, renamed docs).
 - [x] Phase 1 — proxy skeleton + exact-match cache.
