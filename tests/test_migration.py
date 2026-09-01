@@ -151,3 +151,75 @@ class TestUserScopingMigration:
                 conn.close()
         finally:
             get_settings.cache_clear()
+
+    def test_stale_outcome_check_is_rebuilt_and_rows_preserved(self, legacy_db):
+        """Databases created before the upstream-error contract keep a
+        CHECK(outcome IN ('HIT','MISS','BYPASS')) — writing an ERROR row into
+        them raised IntegrityError (surfaced as a raw HTTP 500). init_db must
+        detect the stale CHECK, rebuild the table, and preserve every row."""
+        from proxy.database import _request_log_check_is_stale, init_db
+
+        conn = sqlite3.connect(legacy_db)
+        assert _request_log_check_is_stale(conn)  # fixture is pre-ERROR shape
+        conn.close()
+
+        init_db()
+
+        conn = sqlite3.connect(legacy_db)
+        conn.row_factory = sqlite3.Row
+        try:
+            assert not _request_log_check_is_stale(conn)
+            # The historical HIT row survived the rebuild.
+            row = conn.execute("SELECT * FROM request_log").fetchone()
+            assert row["outcome"] == "HIT"
+            assert row["latency_ms"] == 5.0
+            # The whole point: an ERROR row is now writable.
+            conn.execute(
+                """
+                INSERT INTO request_log
+                    (timestamp, prompt_text, prompt_hash, outcome, latency_ms)
+                VALUES (?, ?, ?, 'ERROR', ?)
+                """,
+                (2.0, "failed prompt", "cafebad", 12.0),
+            )
+            assert conn.execute("SELECT COUNT(*) FROM request_log").fetchone()[0] == 2
+        finally:
+            conn.close()
+
+    def test_partially_migrated_db_still_gets_check_rebuild(self, legacy_db):
+        """The real-world case: Phase 7 already ALTERed user_id into
+        request_log, so the user_id branch is a no-op — the CHECK rebuild
+        must still fire (this exact DB shape shipped the bug)."""
+        from proxy.database import _request_log_check_is_stale, _table_columns, init_db
+
+        # Simulate the partial state: user_id present, CHECK still stale.
+        conn = sqlite3.connect(legacy_db)
+        conn.execute("ALTER TABLE request_log ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local'")
+        conn.commit()
+        conn.close()
+
+        init_db()
+
+        conn = sqlite3.connect(legacy_db)
+        try:
+            assert "user_id" in _table_columns(conn, "request_log")
+            assert not _request_log_check_is_stale(conn)
+            conn.execute(
+                "INSERT INTO request_log (timestamp, prompt_text, prompt_hash, "
+                "outcome, latency_ms) VALUES (2.0, 'x', 'y', 'ERROR', 1.0)"
+            )
+        finally:
+            conn.close()
+
+    def test_check_rebuild_is_idempotent(self, legacy_db):
+        from proxy.database import _request_log_check_is_stale, init_db
+
+        init_db()
+        init_db()  # second pass: stale check already fixed — must be a no-op
+
+        conn = sqlite3.connect(legacy_db)
+        try:
+            assert not _request_log_check_is_stale(conn)
+            assert conn.execute("SELECT COUNT(*) FROM request_log").fetchone()[0] == 1
+        finally:
+            conn.close()

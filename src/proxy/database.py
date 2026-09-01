@@ -40,7 +40,8 @@ _SCHEMA_V2 = """
 
     -- 'ERROR' marks failed upstream calls (no fabricated cost/tokens).
     -- NOTE: CREATE TABLE IF NOT EXISTS means pre-existing databases keep the
-    -- old constraint until recreated; see _migrate_user_scoping.
+    -- old constraint until recreated; _migrate_user_scoping detects and
+    -- rebuilds such tables.
     CREATE TABLE IF NOT EXISTS request_log (
         log_id            INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp         REAL    NOT NULL,
@@ -92,7 +93,11 @@ def _migrate_user_scoping(conn: sqlite3.Connection) -> None:
         inline UNIQUE(prompt_hash)). SQLite cannot ALTER constraints, so
         cache_entries is rebuilt row-by-row with every historical row assigned
         to the 'local' user (pre-BYOK deployments were single-user).
-        request_log only needs a column add (no constraint change).
+        request_log gets the user_id column added — AND is rebuilt wholesale
+        if its outcome CHECK still lacks 'ERROR' (databases created before
+        the upstream-error contract keep a CHECK(outcome IN
+        ('HIT','MISS','BYPASS')); without the rebuild, every failed-upstream
+        log write raises IntegrityError and surfaces as a raw HTTP 500).
     """
     fk_was_on = bool(conn.execute("PRAGMA foreign_keys").fetchone()[0])
     # Rebuilding a parent table fails under FK enforcement when child rows
@@ -136,9 +141,62 @@ def _migrate_user_scoping(conn: sqlite3.Connection) -> None:
                 "ALTER TABLE request_log "
                 "ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local'"
             )
+
+        if _request_log_check_is_stale(conn):
+            # outcome CHECK predates the upstream-error contract. SQLite
+            # cannot ALTER a CHECK constraint: rebuild the table, preserving
+            # every row. request_log is a child table (nothing references
+            # it), so the rebuild is FK-safe under foreign_keys=OFF.
+            conn.executescript(
+                """
+                CREATE TABLE request_log_v2 (
+                    log_id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp         REAL    NOT NULL,
+                    prompt_text       TEXT    NOT NULL,
+                    prompt_hash       TEXT    NOT NULL,
+                    outcome           TEXT    NOT NULL
+                        CHECK(outcome IN ('HIT','MISS','BYPASS','ERROR')),
+                    matched_entry_id  INTEGER,
+                    similarity_score  REAL,
+                    latency_ms        REAL    NOT NULL,
+                    estimated_cost_usd REAL   NOT NULL DEFAULT 0.0,
+                    tokens_in         INTEGER NOT NULL DEFAULT 0,
+                    tokens_out        INTEGER NOT NULL DEFAULT 0,
+                    user_id           TEXT    NOT NULL DEFAULT 'local',
+                    FOREIGN KEY (matched_entry_id)
+                        REFERENCES cache_entries(entry_id)
+                );
+                INSERT INTO request_log_v2
+                    (log_id, timestamp, prompt_text, prompt_hash, outcome,
+                     matched_entry_id, similarity_score, latency_ms,
+                     estimated_cost_usd, tokens_in, tokens_out, user_id)
+                SELECT log_id, timestamp, prompt_text, prompt_hash, outcome,
+                       matched_entry_id, similarity_score, latency_ms,
+                       estimated_cost_usd, tokens_in, tokens_out, user_id
+                  FROM request_log;
+                DROP TABLE request_log;
+                ALTER TABLE request_log_v2 RENAME TO request_log;
+                """
+            )
     finally:
         if fk_was_on:
             conn.execute("PRAGMA foreign_keys=ON")
+
+
+def _request_log_check_is_stale(conn: sqlite3.Connection) -> bool:
+    """True when request_log's outcome CHECK predates the 'ERROR' outcome.
+
+    Reads the stored CREATE TABLE sql: legacy databases carry
+    CHECK(outcome IN ('HIT','MISS','BYPASS')) — writing an ERROR row into
+    them raises IntegrityError. Brand-new v2 tables contain 'ERROR' and
+    never enter this path.
+    """
+    if "request_log" not in _existing_tables(conn):
+        return False
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='request_log'"
+    ).fetchone()
+    return "'ERROR'" not in (row[0] or "").upper()
 
 
 def _existing_tables(conn: sqlite3.Connection) -> set[str]:
