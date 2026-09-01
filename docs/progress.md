@@ -15,6 +15,27 @@
 
 ---
 
+## 2026-09-02 — 🚀 LAUNCHED: deployed to Render, BYOK verified on the public URL
+
+Context: owner executed the deploy; agent diagnosed a live 500 and shipped the schema fix that it exposed. The project is now a running public service.
+
+**Deployment**
+- Render Blueprint applied → live at `https://semantic-cache-proxy.onrender.com` (free tier, docker runtime, `MOCK_LLM=false`, `USER_ID_PEPPER` + `ADMIN_TOKEN` set as env secrets, health check `/health`).
+- Public verification (all passed): keyless → **401**; Gemini MISS → **HIT** (sim 1.0, `gemini-3.6-flash`); OpenRouter MISS → **HIT** (`minimax/minimax-m3:free` — quota bucket had reset at UTC midnight); non-allowlisted `X-LLM-Base-URL` → **400**; `/dashboard` → 401 without ADMIN_TOKEN, per-user accumulation visible with it.
+- Note: `/` intentionally 404s (API has no root page); `/health`, `/metrics`, `/dashboard`, `/v1/chat/completions` are the surfaces.
+
+**Bug found live + root cause + fix (shipped as `fdc91e8`/`c38f795`):**
+- **Raw HTTP 500 on any failed upstream call against a pre-Aug-23 database.** The Phase-7 migration rebuilt `cache_entries` for user scoping but left legacy `request_log` tables carrying `CHECK(outcome IN ('HIT','MISS','BYPASS'))` — no `'ERROR'`. Every failed upstream call (429/401/5xx) therefore crashed writing its ERROR row: `IntegrityError` → unhandled → bare 500 with zero diagnosis. Fix: `_migrate_user_scoping` now detects the stale CHECK via `sqlite_master` and rebuilds the table in place, preserving all rows (3 new tests: rebuild+preserve, the partial-migration DB shape that shipped the bug, idempotency). **Proven against a copy of the owner's actual stale `cache.db`: same request that 500'd returned a clean OpenAI-shaped 429, DB migrated on boot, ERROR row logged, history intact.** 135 → 138 tests.
+
+**Operational facts learned (documented in LAUNCH_CHECKLIST reality sheet):**
+- OpenRouter's free-model 50/day limit is **per-account, shared across all keys** — a freshly created key does not reset the bucket; it resets at UTC midnight.
+- The owner's machine runs an unrelated Docker stack (`trakplus-*`) publishing port 8000 alongside the local proxy's `127.0.0.1:8000` binding — verified benign (Windows specific-binding precedence; all probes reached the proxy), but worth knowing.
+- Local API keys are standardized as persistent user env vars `SC_OPENROUTER_KEY` / `SC_GEMINI_KEY` / `SC_FREE_MODEL` (dedicated `semantic-cache-proxy`-named keys, distinct from the owner's personal keys).
+
+**Remaining owner items:** close the 5 superseded Dependabot PRs; delete the OneDrive remnant folder; optional Render Starter + disk for persistence; optional `/` → `/dashboard` redirect.
+
+---
+
 ## 2026-09-01 (session 6) — tiktoken, dev-floor sync, final acceptance — code-side roadmap complete
 
 Context: closing out every remaining locally-implementable item. After this session, **everything left on the board requires the owner** (cloud deploy with real keys, destructive cleanup decisions) or a scope decision the todos explicitly park (ANN swap, streaming cache, distributed coalescing, per-tenant rate limiting). Test count 132 → **135**; black-box smoke 22/22.

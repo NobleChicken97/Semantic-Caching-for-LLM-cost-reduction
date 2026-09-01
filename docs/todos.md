@@ -23,10 +23,7 @@ The two lost directories are restored, the working tree is verified end-to-end (
 
 ## 🟠 P1 — Blocks live deploy / key interview story
 
-- [ ] **🟠 P1** Apply Render Blueprint (`render.yaml`) and run `docs/LAUNCH_CHECKLIST.md` Phases A–D end-to-end.
-  - Generate `USER_ID_PEPPER` and `ADMIN_TOKEN` (32-byte hex each, never rotate); set as Render env secrets.
-  - With two real keys (Alice via OpenRouter free model, Bob via Gemini flash), confirm: MISS → HIT for Alice; MISS → HIT for Bob (different `user_id`s in `/cache/entries`); keyless → 401; non-allowlisted `X-LLM-Base-URL` → 400; dashboard shows both users accumulating independently.
-  - Acceptance: public URL `/health` returns 200; the BYOK runbook's 4 checks all pass.
+- [x] **🟠 P1** Render Blueprint applied and BYOK runbook verified on the PUBLIC URL — ✅ **2026-09-02: LAUNCHED.** Live at `https://semantic-cache-proxy.onrender.com` (free tier, `MOCK_LLM=false`, `USER_ID_PEPPER` + `ADMIN_TOKEN` set). All runbook checks passed on the deployed service: keyless → 401; Gemini MISS → HIT (sim 1.0); OpenRouter MISS → HIT via `minimax/minimax-m3:free`; non-allowlisted `X-LLM-Base-URL` → 400; `/dashboard` gated by ADMIN_TOKEN. Local pre-deploy validation also passed (Gemini + OpenRouter pairs, after fixing two real bugs found during it — see `progress.md` 2026-09-02).
 - [x] **🟠 P1** Re-measure threshold curve against current BGE weights on the HF Hub. ✅ Done 2026-09-01 session 3: `python scripts/run_sweep.py` reproduced the documented curve exactly — F1 still peaks at the default **0.85 (F1=0.8571)**, borderline pairs unchanged (antonym pair 0.8643, code pair 0.8449). No re-pin or re-justification needed.
 - [x] **🟠 P1** Added the `LICENSE` file (MIT, "Copyright (c) 2026 Arpan Goyal") — 2026-09-01 session 5. The name was taken from the git author identity; if you want a different legal name or the GitHub handle, it's a one-line edit.
 - [ ] **🟠 P1** Decide the fate of the OneDrive remnant copy (`C:\Users\arpan.ARPAN\OneDrive\Desktop\projects\Semantic caching layer for LLM cost reduction`): it holds the only local git history (11 commits, now functional after HEAD/config repair) — keep until the Desktop repo has been re-synced from remote and verified, then archive/delete to avoid future confusion.
