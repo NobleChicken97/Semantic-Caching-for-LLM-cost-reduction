@@ -15,6 +15,24 @@
 
 ---
 
+## 2026-09-02 (later) — post-launch checklist round
+
+Context: working through the owner's remaining checklist. Shipped one small feature, deleted the remnant, and surfaced one auth-usability gap that needs an owner decision before touching live auth.
+
+**Shipped**
+- `GET /` service card (no more bare 404 at the bare URL): name, version, endpoint map. 1 new test → **139 total**, CI green on all nine checks, live-verified on Render after auto-redeploy.
+- OneDrive remnant folder **deleted** after a two-part safety scan: (1) file-list diff vs `origin/main` showed only tool caches as extras; (2) the copy's git tip `0f8f7d7` proven an ancestor of remote `main` — zero unique history or data lost (OneDrive recycle bin holds it ~30 days regardless).
+- Docs: OpenRouter's free quota documented as **per-account across all keys** (resets UTC midnight); launch + this round recorded.
+
+**Found, not yet fixed (needs owner approval — it's an auth change on a live service)**
+- **`/dashboard` is unreachable from a browser while `ADMIN_TOKEN` is set**: the gate reads only the `Authorization` header (browsers can't send it on a link) and the page has no token prompt, so it 401s before rendering. Live data is still viewable token-free via `/metrics`, `/cache/entries`, `/logs/recent`. Proposed fix (P2 in `todos.md`): `?token=` fallback in `require_admin_token` + token-aware dashboard JS.
+
+**Operational notes**
+- Every `git push` redeploys the Render service and **wipes the ephemeral free-tier disk** — the verification entries from the launch hour were reset by subsequent pushes. Expected; the Phase-E paid disk is the fix if history persistence matters.
+- Dependabot PR closure and Security-tab alert review need GitHub authentication (`gh auth login`) or manual clicks — instructions handed to the owner.
+
+---
+
 ## 2026-09-02 — 🚀 LAUNCHED: deployed to Render, BYOK verified on the public URL
 
 Context: owner executed the deploy; agent diagnosed a live 500 and shipped the schema fix that it exposed. The project is now a running public service.
