@@ -163,6 +163,10 @@ Purging nulls out `request_log` foreign-key references first, preserving metrics
 
 > **Auth:** `/cache/purge`, `/eval/threshold-sweep` and `/dashboard` are admin endpoints — when `ADMIN_TOKEN` is set they require `Authorization: Bearer <ADMIN_TOKEN>` (else `401`); unset (default) they're open, which keeps local mock-mode demos frictionless. See [Configuration](#configuration).
 
+### `GET /`
+
+A small service card for anyone typing the bare URL — service name, version, and the endpoint map (no data, no auth).
+
 ### `GET /health` · `POST /eval/threshold-sweep`
 
 ```bash

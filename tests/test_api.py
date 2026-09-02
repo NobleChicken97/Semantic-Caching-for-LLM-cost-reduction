@@ -81,6 +81,24 @@ class TestHealth:
         assert data["status"] == "ok"
         assert data["phase"] == 7
 
+    @pytest.mark.asyncio
+    async def test_root_serves_service_card(self, client):
+        """The bare URL answers with an endpoint map instead of a bare 404."""
+        resp = await client.get("/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["service"] == "Semantic Cache Proxy"
+        assert data["version"] == "0.5.0"
+        for key in (
+            "chat_completions",
+            "health",
+            "metrics",
+            "dashboard",
+            "cache_entries",
+            "recent_logs",
+        ):
+            assert key in data["endpoints"]
+
 
 class TestChatCompletions:
     @pytest.mark.asyncio

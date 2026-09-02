@@ -126,6 +126,27 @@ async def health():
     return {"status": "ok", "phase": 7}
 
 
+@app.get("/")
+async def root():
+    """Service card for visitors who type the bare URL (the API has no home page).
+
+    Links only — every real surface lives at its own path, and /dashboard
+    additionally requires the admin token whenever ADMIN_TOKEN is set.
+    """
+    return {
+        "service": "Semantic Cache Proxy",
+        "version": app.version,
+        "endpoints": {
+            "chat_completions": "/v1/chat/completions (POST, BYOK via Authorization: Bearer <provider-key>)",
+            "health": "/health",
+            "metrics": "/metrics",
+            "dashboard": "/dashboard (admin token required when ADMIN_TOKEN is set)",
+            "cache_entries": "/cache/entries",
+            "recent_logs": "/logs/recent",
+        },
+    }
+
+
 @app.get("/metrics", response_model=MetricsResponse)
 async def metrics():
     return get_metrics()
