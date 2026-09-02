@@ -15,7 +15,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from ..cache import _hash_prompt, log_request, lookup, store
-from ..config import get_settings, resolve_base_url
+from ..config import PROVIDER_BASE_URLS, get_settings, resolve_base_url
 from ..llm_client import CircuitOpenError, forward_to_llm
 from ..models import (
     CacheMetadata,
@@ -145,11 +145,21 @@ def _circuit_open_response(exc: CircuitOpenError) -> JSONResponse:
 
     503 (not 502): the proxy is deliberately shedding load — retrying
     sooner than the breaker cooldown is exactly what we're preventing.
+    The exception's text (which names the upstream) stays in the server
+    log only; the client gets a static message.
     """
     return JSONResponse(
         status_code=503,
         content={
-            "error": {"message": str(exc), "type": "upstream_circuit_open", "code": 503}
+            "error": {
+                "message": (
+                    "Upstream temporarily unavailable: the circuit breaker is "
+                    "open after repeated upstream failures. Retry after a "
+                    "short cooldown."
+                ),
+                "type": "upstream_circuit_open",
+                "code": 503,
+            }
         },
     )
 
@@ -180,12 +190,20 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
     # --- Caller-selected upstream (allowlist-enforced) ---
     try:
         base_url = _resolve_upstream_base(body, request)
-    except ValueError as exc:
+    except ValueError:
+        # Static message on purpose: echoing the ValueError would reflect the
+        # caller-supplied provider/URL back into the response (CodeQL:
+        # information exposure through an exception). The allowed set is
+        # public documentation, so naming it is safe.
+        allowed = ", ".join(sorted(PROVIDER_BASE_URLS))
         return JSONResponse(
             status_code=400,
             content={
                 "error": {
-                    "message": str(exc),
+                    "message": (
+                        "provider/base URL is not allowlisted "
+                        f"(allowed: {allowed}, or their exact base URLs)"
+                    ),
                     "type": "invalid_request_error",
                     "code": 400,
                 }

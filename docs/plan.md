@@ -36,7 +36,7 @@ Semantic caching layer for LLM cost reduction/
 │   ├── database.py                   Schema v2, idempotent migration, seed 31 pairs
 │   ├── embedding.py                  BAAI/bge-small-en-v1.5 wrapper (CPU, L2-normalized)
 │   ├── llm_client.py                 forward_to_llm + bounded retries + mock
-│   ├── security.py                   HMAC user_id derivation (BYOK)
+│   ├── security.py                   keyed-BLAKE2b user_id derivation (BYOK)
 │   ├── eval.py                       Threshold sweep (batch-embed once, classify per t)
 │   ├── routes/
 │   │   ├── __init__.py

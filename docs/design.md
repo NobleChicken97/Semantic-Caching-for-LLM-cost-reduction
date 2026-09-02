@@ -19,7 +19,7 @@
         │  BAAI/bge-small-en-v1.5 (CPU, L2-normalized, 384-dim)        │
         │                                                              │
         │   chat handler:                                              │
-        │     1. resolve user_id = HMAC-SHA256(pepper, api_key)[:24]   │
+        │     1. resolve user_id = keyed-BLAKE2b(pepper, api_key)      │
         │     2. X-Cache-Bypass true? → forward → log BYPASS → return  │
         │     3. coalesce per (prompt_hash, model) via asyncio.Lock     │
         │     4. exact hash lookup   (composite UNIQUE prompt_hash+user)│
@@ -76,7 +76,7 @@
 | `cache.py` | Two-tier lookup (`lookup` / `_exact_lookup` / `_semantic_lookup`), `store`, `purge`, `_delete_entry`, `_detach_log_references`, `log_request`, `prune_old_logs` (retention rollup), `_rollup_totals`, `get_metrics`, `list_cache_entries`, `recent_logs` |
 | `embedding.py` | Lazy-loaded `SentenceTransformer("BAAI/bge-small-en-v1.5")`, `embed_texts` (2D float32, L2-normalized), `embedding_dim` (=384), `cosine_similarity` (np.dot on unit vectors) |
 | `llm_client.py` | `_post_with_retries` (bounded retry on 408/429/5xx + transport errors; honors `Retry-After`; surfaces >30 s waits immediately), `CircuitBreaker` (per-upstream CLOSED/OPEN/HALF_OPEN fail-fast guard), `forward_to_llm` (mock or real; shared lifespan client or one-off), `_mock_response` (echoes last user msg), `_estimate_tokens` (tiktoken with heuristic fallback) |
-| `security.py` | `derive_user_id(api_key) = HMAC-SHA256(USER_ID_PEPPER, api_key)[:24]`; `LOCAL_USER_ID = "local"` for keyless mock traffic |
+| `security.py` | `derive_user_id(api_key) = keyed-BLAKE2b(USER_ID_PEPPER, api_key)` (12-byte digest hex; HMAC-SHA256[:24] until 2026-09-02); `LOCAL_USER_ID = "local"` for keyless mock traffic |
 | `config.py` | `Settings` (frozen dataclass), `get_settings()` (`lru_cache` factory), `PROVIDER_BASE_URLS` allowlist, `resolve_base_url()`, `DEFAULT_MODEL_PRICING`, `_parse_model_pricing()` |
 | `models.py` | OpenAI-shaped request/response Pydantic models; BYOK `provider` extension field (never sent upstream); per-user metric model |
 | `database.py` | Schema v2 (`_SCHEMA_V2`), `_migrate_user_scoping` (idempotent rebuild for legacy DBs), `seed_test_pairs` (31 pairs) |
@@ -128,9 +128,9 @@
 
 ### 4.8 BYOK over per-user accounts / shared pool
 
-- **Chosen:** Each caller sends their own provider key; the proxy derives `user_id = HMAC-SHA256(USER_ID_PEPPER, key)[:24]` and scopes cache, logs, and metrics on it. The proxy itself never bills anything.
+- **Chosen:** Each caller sends their own provider key; the proxy derives `user_id = keyed-BLAKE2b(USER_ID_PEPPER, key)` and scopes cache, logs, and metrics on it. The proxy itself never bills anything.
 - **Alternative:** A shared pool of provider keys managed by the operator; rate-limiting per tenant.
-- **Why this won:** The stated use case is 10–15 hobbyists with their own free keys, where the operator must not be on the hook for anyone's bill. HMAC keeps the raw key out of every log row and out of the database; the pepper makes brute-force back to the original key infeasible; a same-key derivation is stable across restarts. Rotation of `USER_ID_PEPPER` is deliberately a one-time decision (it would orphan every user's scoped history) and called out as such in `.env.example`.
+- **Why this won:** The stated use case is 10–15 hobbyists with their own free keys, where the operator must not be on the hook for anyone's bill. A keyed MAC (BLAKE2b, replacing HMAC-SHA256 in 2026-09-02 to satisfy CodeQL's sensitive-data crypto checks — same guarantees) keeps the raw key out of every log row and out of the database; the pepper makes brute-force back to the original key infeasible; a same-key derivation is stable across restarts. Rotation of `USER_ID_PEPPER` is deliberately a one-time decision (it would orphan every user's scoped history) and called out as such in `.env.example`.
 
 ### 4.9 Provider allowlist, not free-form base URL
 
