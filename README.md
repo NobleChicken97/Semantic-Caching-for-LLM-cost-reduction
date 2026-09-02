@@ -214,7 +214,6 @@ All settings are environment variables (see [.env.example](.env.example)):
 |----------|---------|---------|
 | `LLM_API_BASE_URL` | `https://api.openai.com/v1` | Upstream LLM API |
 | `LLM_API_KEY` | `sk-placeholder` | API key for upstream LLM |
-| `LLM_MODEL` | `gpt-3.5-turbo` | Default model name |
 | `MOCK_LLM` | `false` | Mock mode — no real API calls |
 | `CACHE_DB_PATH` | `cache.db` | SQLite database path |
 | `CACHE_TTL_SECONDS` | `3600` | Cache entry time-to-live |

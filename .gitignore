@@ -33,5 +33,6 @@ pytest-results-*.xml
 pip-audit.json
 pip-audit.sarif
 
-# Tools
-.serena/cache/
+# Tools - personal tooling refs & MCP config stay out of the public repo
+# (owner's copies live in the sc-personal-notes folder under the user profile)
+.serena/

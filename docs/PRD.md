@@ -1,5 +1,8 @@
 # AI Engineering Portfolio — Project 03
 
+> **⚠ Historical planning document** (pre-build). Written before implementation; kept for the project's narrative. Current truth: `docs/design.md` (architecture), `docs/progress.md` (what actually happened), `docs/todos.md` (open work).
+
+
 > **Difficulty:** ●●●○○ Intermediate
 
 ## Semantic Caching Layer for LLM Cost Reduction

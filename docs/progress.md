@@ -15,6 +15,31 @@
 
 ---
 
+## 2026-09-03 (later still) — senior code review executed: dead weight removed
+
+Context: full maintainability review (all 8 requested categories) verified against usage-counted greps; Phase 1 (zero-risk) + Phase 2 (owner decisions) executed. Nothing behavioral changed — 142 tests must stay green.
+
+**Removed as dead:**
+- `LLM_MODEL` / `Settings.llm_model` — set in config but zero readers; docs claimed an effect that didn't exist (model identity always comes from the request).
+- `_circuit_open_response(exc)` param — inert since the CodeQL static-message fix.
+- `docs/assets/` — 3 orphaned dashboard PNGs, zero references since the README redesign.
+- `scripts/check_pairs.py` — Phase-3 authoring tool, superseded by `run_sweep.py` + the drift guard.
+- `docs/report.md` — archived snapshot; `plan.md`'s stale "pair with report.md" pointer fixed.
+
+**De-risked:**
+- `pyproject.toml` slimmed to `[tool.pytest.ini_options]` only. The `[project]` table (v0.2.0, deps missing tiktoken) was never used for installation and drifted — a "which deps are true?" trap.
+
+**Consolidated / labeled:**
+- `guide.md` → `docs/guide.md` with a currency banner, test counts 68 → 142, and Part 11 rewritten (the old audit was frozen pre-commit: "uncommitted phases", "only 2 commits exist" — all obsolete; its quirk list items 1/2/4/5/8 were all fixed in later rounds, now documented as such).
+- MASTER_GUIDE / PRD / TECHNICAL_DETAIL carry "historical planning document" banners.
+- `plan.md`: phase table updated through launch, recovery-era sections 4–5 replaced with current state, decision points closed out.
+
+**Privacy:** personal tooling references (`skills.md`, `docs/skills2use.md`, `.serena/`) removed from the public repo and preserved in the owner's `sc-personal-notes` folder under the user profile. Notable find: `docs/skills2use.md` had already vanished from the working tree and been silently staged by a blind `git add -A` in `a35c20e` — recovered from git history. Lesson recorded: audit `git add -A` output before committing.
+
+**Deliberately kept:** `Procfile` (zero-maintenance portability artifact, documented); `Makefile`; `pair_similarities()` wrapper (stable API); the coalescing double-lookup and metrics rollup union (load-bearing, verified).
+
+---
+
 ## 2026-09-03 (later) — dashboard browser access shipped + live-monitor CI
 
 - **`?token=` admin fallback shipped** (owner-approved): `require_admin_token` accepts `?token=<ADMIN_TOKEN>` when no header is present (header wins; constant-time compare via `hmac.compare_digest`); `index.html`'s `api()` helper now reads the token from the URL and attaches `Authorization: Bearer` to every purge/sweep fetch. Browsers can finally open `/dashboard?token=<ADMIN_TOKEN>`. 3 new tests → **142 total**.

@@ -1,17 +1,7 @@
-[project]
-name = "semantic-cache-proxy"
-version = "0.2.0"
-description = "Semantic caching proxy for LLM APIs — exact-match + BGE-small embedding similarity, with TTL invalidation, bypass header, and hit-rate/cost metrics."
-requires-python = ">=3.10"
-dependencies = [
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.30.0",
-    "httpx>=0.27.0",
-    "pydantic>=2.0.0",
-    "sentence-transformers>=3.0.0",
-    "numpy>=1.24.0",
-]
-
+# Tooling config only — dependency installation is via requirements.txt /
+# requirements-dev.txt (Dockerfile and CI install from those). The [project]
+# metadata table was removed 2026-09-03: it had drifted from requirements.txt
+# and nothing ever pip-installs this package.
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

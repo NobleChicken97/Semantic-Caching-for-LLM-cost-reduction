@@ -140,7 +140,7 @@ def _upstream_error_response(exc: httpx.HTTPError) -> JSONResponse:
     )
 
 
-def _circuit_open_response(exc: CircuitOpenError) -> JSONResponse:
+def _circuit_open_response() -> JSONResponse:
     """Map a fail-fast circuit-open rejection to the OpenAI error shape.
 
     503 (not 502): the proxy is deliberately shedding load — retrying
@@ -242,7 +242,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
             elapsed_ms = (time.perf_counter() - t0) * 1000
             logger.error("Upstream LLM call blocked by OPEN circuit on BYPASS: %s", exc)
             _log_failed_request(prompt, elapsed_ms, user_id)
-            return _circuit_open_response(exc)
+            return _circuit_open_response()
         except httpx.HTTPError as exc:  # HTTPStatusError + RequestError base
             elapsed_ms = (time.perf_counter() - t0) * 1000
             logger.error("Upstream LLM call failed on BYPASS: %s", exc)
@@ -290,7 +290,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
                             "Upstream LLM call blocked by OPEN circuit on MISS: %s", exc
                         )
                         _log_failed_request(prompt, elapsed_ms, user_id)
-                        return _circuit_open_response(exc)
+                        return _circuit_open_response()
                     except httpx.HTTPError as exc:
                         elapsed_ms = (time.perf_counter() - t0) * 1000
                         logger.error("Upstream LLM call failed on MISS: %s", exc)

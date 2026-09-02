@@ -19,7 +19,6 @@ class Settings:
     # --- LLM backend ---
     llm_api_base_url: str
     llm_api_key: str
-    llm_model: str
 
     # --- Mock mode (no real API key needed) ---
     mock_llm: bool
@@ -142,7 +141,6 @@ def get_settings() -> Settings:
     return Settings(
         llm_api_base_url=os.getenv("LLM_API_BASE_URL", "https://api.openai.com/v1"),
         llm_api_key=os.getenv("LLM_API_KEY", "sk-placeholder"),
-        llm_model=os.getenv("LLM_MODEL", "gpt-3.5-turbo"),
         mock_llm=os.getenv("MOCK_LLM", "false").strip().lower() == "true",
         cache_db_path=os.getenv("CACHE_DB_PATH", "cache.db"),
         cache_default_ttl_seconds=int(os.getenv("CACHE_TTL_SECONDS", "3600")),

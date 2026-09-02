@@ -1,6 +1,13 @@
 # GUIDE.md — Semantic Cache Proxy for LLM APIs
 ### The complete owner's manual: what it is, why it exists, how every piece works, and how to present it
 
+> **Updated 2026-09-03** (moved from the repo root; stale counts and status refreshed).
+> The living sources are `README.md`, `docs/design.md`, `docs/progress.md`, `docs/todos.md` —
+> where this guide and those disagree, trust them. Test counts below now reflect 142 (was 68
+> when most of this was written); the project has since shipped BYOK, `/eval/auto-tune`, a
+> per-upstream circuit breaker, tiktoken counting, CI (incl. a live-service monitor), and is
+> **live at https://semantic-cache-proxy.onrender.com**.
+
 > **How to use this guide:** Read Parts 1–4 to understand the project. Read Part 9 before any interview.
 > Use Part 8 if you need to learn any underlying concept from zero. Part 10 tells you exactly what's done,
 > what's left, and what *you* personally still need to do.
@@ -82,7 +89,7 @@ src/proxy/
 ├── eval.py          Threshold sweep: embed once → classify at N thresholds → P/R/F1
 ├── routes/chat.py   POST /v1/chat/completions handler (the core flow)
 └── static/index.html Single-page dashboard (vanilla JS + Chart.js from CDN)
-tests/               68 tests (verified passing; was 51 when this guide was written)
+tests/               142 tests (verified passing)
 scripts/             Sweep runner, pair checker, dataset exporter
 data/                labeled_test_pairs.json (reproducible eval dataset)
 Dockerfile · render.yaml · Procfile · Makefile · pyproject.toml
@@ -506,7 +513,7 @@ Lead with numbers, frame as infrastructure, volunteer the limitations before the
 > holds 93.75% up to it and falls off a cliff after. Storage is SQLite in WAL mode with FK enforcement;
 > purges detach log references rather than cascade so metrics history survives. Everything is logged —
 > HIT/MISS/BYPASS with latency, tokens, estimated cost — and aggregated into hit-rate and cost-saved
-> metrics with a Chart.js dashboard. 68 tests, Docker image with CPU-only torch wheels and the model
+> metrics with a Chart.js dashboard. 142 tests, Docker image with CPU-only torch wheels and the model
 > baked in for ~14 s cold starts, Render blueprint included."
 
 Then go deep on whatever they probe:
@@ -575,7 +582,7 @@ Total: roughly 35–50 focused hours to genuine ownership.
 | M8 | numpy essentials: arrays, float32, `dot`, `frombuffer/tobytes` | Vector math + BLOB storage | `cache.py` serialize helpers | Round-trip a vector through bytes | 1–2 h |
 | M9 | SQLite: tables, indexes, foreign keys, PRAGMAs, parameterized queries | Persistence layer | `database.py` | Create the 3-table schema yourself; break an FK on purpose | 2–3 h |
 | M10 | Evaluation math: confusion matrix, precision, recall, F1, hard negatives | The threshold argument | `eval.py`, Part 8 above | Hand-compute P/R/F1 for a tiny labeled set | 2–3 h |
-| M11 | pytest: fixtures, monkeypatch, tmp_path, async tests, ASGITransport | All 68 tests | `tests/conftest.py`, `test_api.py` fixture | Write one test for `/health` with a temp DB | 3–4 h |
+| M11 | pytest: fixtures, monkeypatch, tmp_path, async tests, ASGITransport | All 142 tests | `tests/conftest.py`, `test_api.py` fixture | Write one test for `/health` with a temp DB | 3–4 h |
 | M12 | Config & secrets via env vars | 12-factor configuration | `.env.example`, `config.py` | Add a fake `MAX_ENTRIES` setting end-to-end | 30 min |
 | M13 | Deployment: Docker layers, CPU-vs-CUDA wheels, health checks, Render/Railway | Phase 6 artifacts | `Dockerfile`, `render.yaml`, `Procfile` | Build the image; run it; hit `/health` | 3–4 h |
 | M14 | Git hygiene: working tree vs index vs commits, .gitignore | This repo's changes are staged-but-uncommitted (see Part 11!) | `git status` | Stage and commit the current work safely | 1 h |
@@ -585,52 +592,31 @@ purge detaches FKs (D12), and why 0.85 beats both 0.80 and 0.93 (Part 8) — you
 
 ---
 
-## Part 11 — Completeness audit: what's done, what's left
+## Part 11 — Completeness audit (refreshed 2026-09-03)
 
-**Overall: ~85% of v1 scope is complete and verified.** All six build phases are code-complete;
-what remains is mostly *your* actions (git commits, cloud deploy) plus stretch goals.
-Verified state as of writing: **68/68 tests pass** (`pytest`, 56.8 s run).
+**The project is shipped and live.** Original audit found below in spirit; this replaces the stale one.
 
-### Phase status
+### Status
 
-| Phase | Scope | Status | Evidence |
-|-------|-------|--------|----------|
-| 0 | Repo restructure (src/ layout, .gitignore, Makefile, pyproject metadata) | ✅ Done — **uncommitted** | Working tree vs git history |
-| 1 | Proxy skeleton + exact-match cache | ✅ Done — **committed** | `0157904` |
-| 2 | Semantic matching (BGE-small, two-tier lookup) | ✅ Done — uncommitted | `embedding.py`, tests |
-| 3 | Threshold validation (31 pairs, sweep endpoint, analysis doc) | ✅ Done | `eval.py`, `docs/THRESHOLD_ANALYSIS.md` |
-| 4 | Invalidation + bypass (TTL, purge, header) | ✅ Done incl. TTL tests | `TestTtlExpiry` |
-| 5 | Metrics + dashboard (single-service Chart.js UI) | ✅ Done | `/dashboard`, `/cache/entries`, `/logs/recent` |
-| 6 | Deployment artifacts | ✅ Built & Docker-verified locally (~14 s cold start; MISS→HIT + dashboard confirmed in-container). **Live cloud deploy not done** | `Dockerfile`, `render.yaml`, `Procfile` |
-| Stretch | Distributed mode · auto-tuning threshold · wiring in front of another project with before/after costs | ❌ Not started | PRD stretch list |
+| Area | Status | Evidence |
+|------|--------|----------|
+| Phases 0–7 (all build phases) | ✅ Done | `docs/plan.md` phase table |
+| Post-7.2 hardening | ✅ Done | `/eval/auto-tune`, per-upstream circuit breaker, tiktoken counting, ruff format gate, keyed-BLAKE2b identity, `?token=` dashboard auth, `/` service card |
+| **Live deployment** | ✅ **Launched 2026-09-02** | `https://semantic-cache-proxy.onrender.com` — BYOK verified with real Gemini + OpenRouter keys (401 / MISS→HIT ×2 / 400 all passed) |
+| CI/CD | ✅ Done | lint + 4-OS test matrix + docker smoke + pip-audit + CodeQL + hourly live-monitor; 142 tests green |
+| Persistence | ⚠ Decided: stay free-tier | Cache/counters reset on deploy & idle spin-down; manual re-warm (`Warm-Cache` in the local demo script); upgrade paths in `LAUNCH_CHECKLIST.md` Phase E |
+| Stretch: sibling integration | ❌ Not started | The one remaining roadmap item |
 
-### The one big thing left: git
+### Known quirks (current — the old list is resolved)
 
-Only two commits exist: `e4dc5c4` ("First") and `0157904` (phase 1). Everything since — semantic tier,
-eval module, dashboard, deployment artifacts, repo restructure — lives in the working tree / staged
-index awaiting your review and commit. Until committed, it's one careless `checkout` away from gone.
-
-### Remaining work, in priority order
-
-1. **Commit the work** (review `git status`/`git diff`, then commit in logical chunks).
-2. **Add LICENSE** (MIT suggested — needs your copyright name).
-3. **Deploy live**: push to GitHub → Render "New + → Blueprint" (or Railway via Procfile). Defaults to `MOCK_LLM=true`.
-4. **Before enabling real LLM mode**: set a spend cap on the API key, *then* set `MOCK_LLM=false` + `LLM_API_KEY` as a secret.
-5. **Dashboard screenshot / demo video** for the README.
-6. Small fixes worth doing while you're in there: RESOLVED 2026-08-23: test counts are current in README (68), and HIT latency is now measured via perf_counter.
-
-### Known quirks & technical debt (know these cold)
-
-| # | Quirk | Impact |
+| # | Quirk | Status |
 |---|-------|--------|
-| 1 | HIT rows log `latency_ms = 0.0` (timing wraps only the upstream call) | `avg_latency_hit_ms` ≈ 0 on `/metrics`; dashboard hit-latency bar reads 0 |
-| 2 | README test count stale in one spot ("45" vs actual 51) | Cosmetic |
-| 3 | `test_seeded_dataset_has_32_pairs` asserts ≥30 (dataset is 31) | Misleading name only |
-| 4 | Cost estimation hardcoded to gpt-3.5-turbo pricing regardless of model | Under/over-states savings for other models |
-| 5 | Token counts via `len//4` heuristic | Approximate costs |
-| 6 | O(N) semantic scan | Fine to low-thousands of entries; ANN index beyond |
-| 7 | BYPASS rows log cost 0.0 | Correct by design (no cache involvement), just know it |
-| 8 | No retry/error handling around upstream LLM failures | A 500 propagates raw to the client |
+| 1 | O(N) semantic scan per request | Accepted, warn-only guardrail at `MAX_SEMANTIC_SCAN_ENTRIES`; ANN swap documented |
+| 2 | BYPASS rows log cost 0.0 | Correct by design |
+| 3 | Circuit breaker / coalescing are per-process | Accepted for single-instance scale; Redis lock is the scale path |
+| 4 | Free-tier ephemeral disk | Accepted (see persistence above) |
+
+Everything from the original quirk list that isn't here was **fixed**: HIT latency is measured (`perf_counter`), costs are model-aware with prefix inheritance, tokens are tiktoken-counted, upstream failures return OpenAI-shaped errors through bounded retries + a circuit breaker.
 
 ---
 
@@ -640,8 +626,8 @@ index awaiting your review and commit. Until committed, it's one careless `check
 
 - **Decisions**: every row in Part 7 is a decision attached to this project under your name. Whether
   reached with AI assistance or alone, they're yours to defend — and Part 7 + Part 9 exist so you can.
-- **Quality gate**: docs throughout the repo deliberately leave commits "awaiting user" — you review,
-  then commit. Nothing ships without your sign-off. That gate is still open (see Part 11 #1).
+- **Quality gate**: commits wait for your review and push. The original "commit the work" gate is
+  closed — the repo is public, pushed, CI-verified, and live; ongoing pushes stay yours.
 - **Operator**: deploy, spend-cap the key, flip mock mode. These need *your* accounts; no code remains.
 - **Presenter**: the demo, the pitch, the Q&A — Part 9 is your script.
 
@@ -684,7 +670,7 @@ docker build -t semantic-cache-proxy . && docker run -p 8000:8000 -e MOCK_LLM=tr
 
 ### Environment variables (all optional)
 
-`LLM_API_BASE_URL` (default OpenAI), `LLM_API_KEY`, `LLM_MODEL` (gpt-3.5-turbo),
+`LLM_API_BASE_URL` (default OpenAI), `LLM_API_KEY`,
 `MOCK_LLM` (false), `CACHE_DB_PATH` (cache.db), `CACHE_TTL_SECONDS` (3600),
 `SIMILARITY_THRESHOLD` (0.85), `HOST` (127.0.0.1), `PORT` (8000).
 
@@ -714,7 +700,8 @@ live tooling: Serena MCP for symbol-level code exploration, Context7 for sentenc
 documentation verification (normalization/dot-product semantics), a fresh pytest run confirming
 **51 passed**, and git history inspection for the completion audit. Numbers cited (thresholds,
 similarities, timings, image size) come from `docs/THRESHOLD_ANALYSIS.md`, `docs/progress.md`, and the
-code itself — nothing is invented. Skills listed in `skills2use.md` were assessed: the UI/design and
+code itself — nothing is invented. (The skills cross-reference file was removed from the public repo
+in the 2026-09-03 cleanup; it lives in the owner's private notes.)
 spec-workflow skills don't apply to documentation tasks; Serena + Context7 were the applicable tools
 and were used.
 
