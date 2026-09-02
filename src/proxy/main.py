@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from .cache import get_metrics, list_cache_entries, prune_old_logs, purge, recent_logs
@@ -33,6 +34,7 @@ logger = logging.getLogger("proxy")
 
 
 async def require_admin_token(
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> None:
     """Bearer-token gate for admin endpoints (review fix #5).
@@ -40,11 +42,22 @@ async def require_admin_token(
     No-op while ``ADMIN_TOKEN`` is unset so the mock-mode demo stays
     frictionless; set ADMIN_TOKEN in any real deployment to lock down
     /cache/purge, /eval/threshold-sweep and /dashboard.
+
+    Browser fallback: ``Authorization`` headers can't be sent on a plain
+    link, so ``?token=<ADMIN_TOKEN>`` is also accepted (header wins when
+    both are present). URLs can leak into browser history and server logs,
+    so this exists for the single-operator dashboard — share the token via
+    the header in anything programmatic.
     """
     expected = get_settings().admin_token
     if not expected:
         return
-    if authorization != f"Bearer {expected}":
+    supplied = authorization or request.query_params.get("token")
+    if supplied and supplied.startswith("Bearer "):
+        supplied = supplied[len("Bearer ") :]
+    if not supplied or not hmac.compare_digest(
+        supplied.encode("utf-8"), expected.encode("utf-8")
+    ):
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing admin bearer token",

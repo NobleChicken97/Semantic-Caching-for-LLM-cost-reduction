@@ -30,7 +30,7 @@ The two lost directories are restored, the working tree is verified end-to-end (
 
 ## 🟡 P2 — Polish
 
-- [ ] **🟡 P2** **Dashboard unusable in a browser while `ADMIN_TOKEN` is set (found post-launch, needs owner approval — auth change).** `require_admin_token` only reads the `Authorization` header, which browsers can't send on a plain link, so `GET /dashboard` 401s before the HTML loads and the page has no token prompt. Proposed fix: accept `?token=<ADMIN_TOKEN>` as a fallback in `require_admin_token` (header still wins) and have the dashboard JS attach the token to its `/cache/purge` + `/eval/threshold-sweep` calls. Until then: view live data token-free via `/metrics`, `/cache/entries`, `/logs/recent`, or `curl -H "Authorization: Bearer <ADMIN_TOKEN>" .../dashboard`.
+- [x] **🟡 P2** **Dashboard browser access — SHIPPED (2026-09-03, owner-approved).** `require_admin_token` now accepts `?token=<ADMIN_TOKEN>` as a fallback (header wins, `hmac.compare_digest`); the dashboard JS reads the token from the URL and attaches it to every purge/sweep call. Open `/dashboard?token=<ADMIN_TOKEN>`. 4 new tests (fallback works on all gated endpoints, wrong token 401, header wins over query token).
 - [x] **🟡 P2** Bare-URL 404 softened: `GET /` now serves a service card (name, version, endpoint map) — 2026-09-02, live-verified, CI green.
 
 - [x] **🟡 P2** Ruff `I001` import-sort warnings in tests/: ✅ re-checked 2026-09-01 session 3 with local ruff 0.16.4 — `ruff check src/ tests/ scripts/` passes clean with zero findings (the previously flagged warnings no longer fire; no fix needed).

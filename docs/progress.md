@@ -15,6 +15,14 @@
 
 ---
 
+## 2026-09-03 (later) — dashboard browser access shipped + live-monitor CI
+
+- **`?token=` admin fallback shipped** (owner-approved): `require_admin_token` accepts `?token=<ADMIN_TOKEN>` when no header is present (header wins; constant-time compare via `hmac.compare_digest`); `index.html`'s `api()` helper now reads the token from the URL and attaches `Authorization: Bearer` to every purge/sweep fetch. Browsers can finally open `/dashboard?token=<ADMIN_TOKEN>`. 3 new tests → **142 total**.
+- **New `live-monitor.yml` workflow** (hourly + manual dispatch): probes the deployed Render service and asserts this project's real contracts — `/health` phase 7, `/` service card, `/metrics` key shape, keyless POST → 401 with `invalid_request_error` (assertion verified against the live service before committing, not guessed). Complements the pre-ship pipeline (lint/matrix/docker-smoke/pip-audit/CodeQL) with post-ship monitoring; hourly pings keep instance-hours far under Render's 750/month free quota.
+- `.gitignore`: added `.ruff_cache/` and local `smoke*.db` artifacts.
+
+---
+
 ## 2026-09-03 — Phase E decided: free tier + manual re-warm
 
 - Owner picked **Option C** (keep Render free, accept ephemeral state) over the Starter disk ($7.25/mo) and a Postgres swap. Documented in `LAUNCH_CHECKLIST.md` Phase E. Consequence: cache entries and metrics counters reset on every deploy *and* 15-min idle spin-down; re-warming is manual (demo calls), and counter history is not recoverable by re-caching.

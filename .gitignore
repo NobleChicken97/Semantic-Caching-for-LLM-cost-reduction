@@ -23,6 +23,9 @@ cache.db
 
 # Testing
 .pytest_cache/
+.ruff_cache/
+smoke*.db
+smoke_test*.db
 htmlcov/
 .coverage
 coverage.xml

@@ -161,7 +161,7 @@ curl -X POST http://127.0.0.1:8000/cache/purge -H "Content-Type: application/jso
 
 Purging nulls out `request_log` foreign-key references first, preserving metrics history while deleting entries.
 
-> **Auth:** `/cache/purge`, `/eval/threshold-sweep` and `/dashboard` are admin endpoints — when `ADMIN_TOKEN` is set they require `Authorization: Bearer <ADMIN_TOKEN>` (else `401`); unset (default) they're open, which keeps local mock-mode demos frictionless. See [Configuration](#configuration).
+> **Auth:** `/cache/purge`, `/eval/threshold-sweep` and `/dashboard` are admin endpoints — when `ADMIN_TOKEN` is set they require `Authorization: Bearer <ADMIN_TOKEN>` (else `401`); unset (default) they're open, which keeps local mock-mode demos frictionless. Browsers can't send that header on a link, so `?token=<ADMIN_TOKEN>` is also accepted as a fallback (header wins) — e.g. open `/dashboard?token=<ADMIN_TOKEN>`; the dashboard attaches it to its own purge/sweep calls. See [Configuration](#configuration).
 
 ### `GET /`
 
@@ -304,6 +304,7 @@ Caveats worth knowing:
 | **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 135-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
 | **Docker smoke** | Builds the production image with GHA layer caching, asserts `torch.cuda.is_available()` is False inside it, then runs the same black-box smoke suite against the containerized server |
 | **Security audit** (non-blocking) | `pip-audit` over `requirements.txt` on every push/PR; findings are published as persistent code-scanning alerts in the **Security tab** (nothing is suppressed or ignored), while transitive-CVE noise from the torch/fastapi ecosystem doesn't gate routine PRs. Dependabot version-bump PRs for pip are off (the `>=` floors make them cosmetic); CVE-driven Dependabot security PRs remain active independently |
+| **Live monitor** (hourly) | Probes the **deployed** Render service and asserts this app's own contracts: `/health` phase 7, `/` service card, `/metrics` shape, keyless POST → 401 BYOK error. Catches a broken deploy or silently-unhealthy service within the hour; makes no provider calls (zero quota spend) |
 
 Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the BGE-small model (~90 MB) is cached per-OS between runs; CPU-only torch is installed *before* project deps so Linux runners never pull multi-GB CUDA wheels (same pin as the Dockerfile). Dependabot keeps actions and pip deps fresh weekly.
 
@@ -340,6 +341,8 @@ Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the 
 ## Dashboard
 
 Run the proxy and open **`http://127.0.0.1:8000/dashboard`** for live hit-rate/cost/latency charts, a searchable cache browser with purge actions, an interactive threshold-sweep runner, and a polling request log. (Chart.js loads from CDN — first view needs internet.)
+
+When `ADMIN_TOKEN` is set, open **`/dashboard?token=<ADMIN_TOKEN>`** — the page picks the token up from the URL and authenticates its own purge/sweep calls automatically.
 
 ## Troubleshooting
 

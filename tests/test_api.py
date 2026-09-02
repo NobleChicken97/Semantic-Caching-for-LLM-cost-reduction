@@ -1190,6 +1190,41 @@ class TestAdminAuth:
             )
         ).status_code == 200
 
+    @pytest.mark.asyncio
+    async def test_query_param_token_fallback_for_browser(self, client, admin_token):
+        """Browsers can't send Authorization headers on a link: /dashboard?token=
+        must work for every gated endpoint (dashboard HTML + JSON APIs)."""
+        assert (
+            await client.get("/dashboard?token=test-admin-token")
+        ).status_code == 200
+        assert (
+            await client.get("/metrics?token=test-admin-token")  # ungated anyway
+        ).status_code == 200
+        resp = await client.get(
+            "/eval/threshold-sweep?token=test-admin-token"
+        )  # GET not allowed; POST below
+        assert resp.status_code in (401, 405)
+        sweep = await client.post(
+            "/eval/threshold-sweep?token=test-admin-token", json={"thresholds": [0.85]}
+        )
+        assert sweep.status_code == 200
+        purge = await client.post("/cache/purge?token=test-admin-token", json={})
+        assert purge.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_wrong_query_token_rejected(self, client, admin_token):
+        resp = await client.get("/dashboard?token=wrong-token")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_header_wins_over_query_token(self, client, admin_token):
+        """Both present: a WRONG header must not be rescued by a valid ?token."""
+        resp = await client.get(
+            "/dashboard?token=test-admin-token",
+            headers={"Authorization": "Bearer nope"},
+        )
+        assert resp.status_code == 401
+
 
 class TestLogsRecentEndpoint:
     @pytest.mark.asyncio

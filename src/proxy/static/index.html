@@ -166,8 +166,15 @@ $("base-url").textContent = location.origin;
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
+// Admin token via /dashboard?token=<ADMIN_TOKEN> — attached to every call so
+// purge/sweep work in a browser (browsers can't send Authorization headers on
+// links). Absent token = harmless: the read-only endpoints are public anyway.
+const ADMIN_TOKEN = new URLSearchParams(location.search).get("token");
 async function api(path, opts) {
-  const r = await fetch(path, opts);
+  opts = opts || {};
+  const headers = Object.assign({}, opts.headers || {});
+  if (ADMIN_TOKEN) headers["Authorization"] = "Bearer " + ADMIN_TOKEN;
+  const r = await fetch(path, Object.assign({}, opts, { headers: headers }));
   if (!r.ok) throw new Error(`${path} → HTTP ${r.status}`);
   return r.json();
 }
@@ -200,7 +207,7 @@ function activateTab(name) {
 }
 document.querySelectorAll("nav button").forEach(b => { b.onclick = () => activateTab(b.dataset.tab); });
 
-// deep-link support: /dashboard?tab=sweep opens on that tab
+// deep-link support: /dashboard?tab=sweep&token=<ADMIN_TOKEN> opens on that tab
 const urlTab = new URLSearchParams(location.search).get("tab");
 if (urlTab) {
   activateTab(urlTab);

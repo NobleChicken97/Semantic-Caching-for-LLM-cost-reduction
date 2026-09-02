@@ -1,0 +1,83 @@
+# Live-service monitor — project-specific post-deploy checks against the
+# PUBLIC Render deployment (https://semantic-cache-proxy.onrender.com).
+#
+# Why this exists: ci.yml + docker-smoke prove the code is correct BEFORE it
+# ships; this workflow proves the DEPLOYED service is actually healthy after
+# Render auto-deploys (or when it silently breaks). It asserts this app's own
+# contracts — never generic pings:
+#   /health          -> {"status":"ok","phase":7}
+#   /                -> service card naming "Semantic Cache Proxy"
+#   /metrics         -> hit_rate/total_requests/total_tokens_saved present
+#   keyless POST     -> 401 with the BYOK error contract
+# No provider calls are made (zero quota spend); the cache itself is untouched.
+#
+# Schedule: hourly. Each ping wakes the free instance (~15 min up), which stays
+# well inside Render's 750 free instance-hours/month while catching a broken
+# service within the hour. Manual runs via workflow_dispatch.
+
+name: Live monitor
+
+on:
+  schedule:
+    - cron: "0 * * * *"  # hourly
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe deployed service
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Assert deployed contracts
+        run: |
+          set -euo pipefail
+          BASE="https://semantic-cache-proxy.onrender.com"
+
+          echo "== /health =="
+          HEALTH=$(curl -sS --max-time 90 --retry 2 "$BASE/health")
+          echo "$HEALTH"
+          echo "$HEALTH" | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          assert d['status'] == 'ok', d
+          assert d['phase'] == 7, d
+          "
+
+          echo "== / (service card) =="
+          ROOT=$(curl -sS --max-time 90 "$BASE/")
+          echo "$ROOT"
+          echo "$ROOT" | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          assert d['service'] == 'Semantic Cache Proxy', d
+          assert 'chat_completions' in d['endpoints'], d
+          "
+
+          echo "== /metrics =="
+          METRICS=$(curl -sS --max-time 90 "$BASE/metrics")
+          echo "$METRICS"
+          echo "$METRICS" | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          for k in ('hit_rate', 'total_requests', 'total_tokens_saved', 'per_user'):
+              assert k in d, (k, d)
+          "
+
+          echo "== keyless POST -> 401 BYOK contract =="
+          CODE=$(curl -sS -o /tmp/keyless.json -w '%{http_code}' --max-time 90 \
+            -X POST "$BASE/v1/chat/completions" \
+            -H "Content-Type: application/json" \
+            -d '{"model":"x","messages":[{"role":"user","content":"hi"}]}')
+          echo "status: $CODE  body: $(cat /tmp/keyless.json)"
+          test "$CODE" = "401"
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/keyless.json'))
+          assert d['error']['type'] == 'invalid_request_error', d
+          assert d['error']['code'] == 401, d
+          "
+
+          echo "ALL LIVE CONTRACT CHECKS PASSED"
