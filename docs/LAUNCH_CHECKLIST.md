@@ -222,7 +222,11 @@ and the per-user table shows both users accumulating independently.
 
 ---
 
-## Phase E — Persistence decision (choose one)
+## Phase E — Persistence decision — ✅ DECIDED 2026-09-03: staying FREE (re-cache manually)
+
+Free tier = ephemeral disk wiped on every deploy *and* idle spin-down (15 min). Cache entries and counters reset; this is accepted. Before any demo, re-warm the cache with the demo calls (4 MISSes re-populate it; counters restart from 0 — history is not recoverable without the paid options below).
+
+
 
 | Option | Cost | What you get | How |
 |---|---|---|---|

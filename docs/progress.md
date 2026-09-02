@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-09-03 — Phase E decided: free tier + manual re-warm
+
+- Owner picked **Option C** (keep Render free, accept ephemeral state) over the Starter disk ($7.25/mo) and a Postgres swap. Documented in `LAUNCH_CHECKLIST.md` Phase E. Consequence: cache entries and metrics counters reset on every deploy *and* 15-min idle spin-down; re-warming is manual (demo calls), and counter history is not recoverable by re-caching.
+- Local helper `C:\Users\arpan.ARPAN\sc-demo.ps1` (machine-local, not in repo) gives any PowerShell window a ready `Ask` against the live URL — the recurring "Ask is not recognized" friction is closed.
+
+---
+
 ## 2026-09-02 (later) — post-launch checklist round
 
 Context: working through the owner's remaining checklist. Shipped one small feature, deleted the remnant, and surfaced one auth-usability gap that needs an owner decision before touching live auth.
