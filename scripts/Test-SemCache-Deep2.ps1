@@ -250,7 +250,10 @@ Write-Host "== M entity swaps, suffix-free (veto must fire or threshold hold) ==
 CleanRoom "M"
 Check "M France seed MISS" (Ask "What is the capital of France?").meta.outcome "MISS"
 foreach ($c in @("Finland", "Norway", "Japan")) {
-    $r = Ask "What is the capital of $c?"
+    # NOTE: string-concat, never "of $c?" — PS 5.1 silently empties a bare
+    # $var directly before "?" (proven by scripts/debug-expand.ps1).
+    $q = "What is the capital of " + $c + "?"
+    $r = Ask $q
     Check "M $c MISS" $r.meta.outcome "MISS"
     Observe "M $c sim" $r.meta.similarity_score
 }
