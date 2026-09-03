@@ -150,8 +150,11 @@
     background-size: 14px 14px;
     -webkit-mask-image: linear-gradient(to left, black, transparent);
     mask-image: linear-gradient(to left, black, transparent); }
-  .gauge-wrap { display: flex; align-items: center; gap: 16px; margin-top: 6px; }
+  .gauge-wrap { display: flex; align-items: center; justify-content: center; gap: 18px; flex: 1 1 auto; padding: 6px 0; }
   .gauge-cap { font-size: 12px; }
+  .gauge-scale { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; margin-top: 2px; }
+  .bento .gauge-scale { color: var(--card-muted, var(--muted)); }
+  .ov-grid > .bento { display: flex; flex-direction: column; }
   .alertstrip { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
   .alert-ico { width: 44px; height: 44px; border-radius: 0; flex: none;
     display: flex; align-items: center; justify-content: center; }
@@ -353,6 +356,7 @@
                 <div class="gauge-cap muted" id="m-lat-cap">–</div>
               </div>
             </div>
+            <div class="gauge-scale muted" aria-hidden="true"><span>0</span><span>needle caps at 50× · number stays exact</span><span>50×</span></div>
           </div>
         </div>
         <div class="panel alertstrip" id="alert-strip" hidden>
