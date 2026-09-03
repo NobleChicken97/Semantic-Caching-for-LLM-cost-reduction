@@ -15,6 +15,18 @@
 
 ---
 
+## 2026-09-04 — Lightsail migration + custom domain + dashboard rounds + docs refresh
+
+**Infra (all live-verified, no assumptions):** Lightsail Small 2GB ($12/mo, `us-east-1a`, static IP `98.95.205.92`) + ECR repo + least-privilege IAM (`semcache-ci` push, `semcache-ecr-pull` host read-only). CD: push to `main` -> CI green -> ECR (`:latest` + `:sha`) -> host pulls + health-gated restart (`deploy.yml`, secrets in repo settings). Persistence proven: MISS -> HIT -> container restart -> HIT -> full host reboot -> HIT -> compose-down + image wipe + ECR re-pull -> HIT. Namecheap A record `semcache` -> static IP; Caddy single-domain block (no :80 catch-all, keeps the ACME challenge path uncontested) -> Let's Encrypt production cert observed in logs; `https://semcache.noblechicken.me/health` = ok.
+
+**Dashboard (all screenshot-verified live):** Phase 8 rewrite -> Watermelon-lane re-skin (real OKLCH tokens from their public index.css) -> statement/ledger -> bento Overview (coral hero + tiles, peach gauge, alert strip) + hand-drawn SVG trend/sweep (Chart.js deleted) -> icon rail + sharp boxes + ambient orbs + gauge composition + dial zoom. Two genuine bugs caught by looking: `.hidden` does not reflect on SVGElement (theme icons) and an SVG-legend/y-tick collision. Fast loop documented: `scripts/fast-loop-dashboard.sh` (file into running container, seconds) decoupled from the 20-min pipeline; `scripts/check_dashboard.py` (contracts + WCAG contrast floor), `scripts/verify-dashboard.sh` (live markers), `scripts/Test-SemCache.ps1` (15-check adversarial battery).
+
+**Docs:** README test counts 135 -> 142, Lightsail production section, dashboard section rewritten, live-monitor retargeted Lightsail (read-only: prod is MOCK mode so the 401 probe does not apply; Render URL now 503s). plan.md live/persistence sections updated; this entry added.
+
+**Still open:** Lightsail snapshot + $15 billing alarm; sibling-project integration stretch.
+
+---
+
 ## 2026-09-03 (later still) — senior code review executed: dead weight removed
 
 Context: full maintainability review (all 8 requested categories) verified against usage-counted greps; Phase 1 (zero-risk) + Phase 2 (owner decisions) executed. Nothing behavioral changed — 142 tests must stay green.

@@ -72,7 +72,7 @@ Precision/recall across thresholds against a 31-pair labeled dataset (full analy
 | Embeddings | sentence-transformers · `BAAI/bge-small-en-v1.5` (CPU) |
 | Vector math | numpy (dot-product cosine on unit vectors) |
 | Storage | SQLite (WAL mode, foreign keys ON) |
-| Testing | pytest + pytest-asyncio (135 tests) |
+| Testing | pytest + pytest-asyncio (142 tests) |
 
 ---
 
@@ -270,7 +270,9 @@ curl -X POST https://your-proxy/v1/chat/completions \
 
 ---
 
-## Deployment (Phase 6)
+## Deployment (Phase 6+)
+
+**Production — Lightsail + custom domain (live):** [`https://semcache.noblechicken.me`](https://semcache.noblechicken.me) — Small 2GB instance ($12/mo flat), persistent SSD for SQLite (survives restarts/redeploys — the Render-free failure mode), Caddy auto-HTTPS, image shipped CI → ECR → host pull on every green `main` push. `MOCK_LLM=true`, so the demo spends $0 while exercising the full cache path (hash → embed → threshold → TTL → metrics).
 
 **Docker (any host):**
 ```bash
@@ -300,10 +302,10 @@ Caveats worth knowing:
 | Job | What it proves |
 |-----|----------------|
 | **Lint** | `ruff` clean across `src/`, `tests/`, `scripts/` |
-| **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 135-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
+| **Tests** (py3.10 / 3.11 / 3.12 + Windows 3.11) | The 142-test white-box suite (cache semantics, TTL, model isolation, coalescing, error contract, auth, settings factory), a coverage report artifact, **plus a black-box smoke suite driven over HTTP against a live uvicorn server** — the same contract an OpenAI SDK client sees: MISS→HIT, paraphrase hits, cross-model key isolation, bypass, metrics accounting, logs, purge |
 | **Docker smoke** | Builds the production image with GHA layer caching, asserts `torch.cuda.is_available()` is False inside it, then runs the same black-box smoke suite against the containerized server |
 | **Security audit** (non-blocking) | `pip-audit` over `requirements.txt` on every push/PR; findings are published as persistent code-scanning alerts in the **Security tab** (nothing is suppressed or ignored), while transitive-CVE noise from the torch/fastapi ecosystem doesn't gate routine PRs. Dependabot version-bump PRs for pip are off (the `>=` floors make them cosmetic); CVE-driven Dependabot security PRs remain active independently |
-| **Live monitor** (hourly) | Probes the **deployed** Render service and asserts this app's own contracts: `/health` phase 7, `/` service card, `/metrics` shape, keyless POST → 401 BYOK error. Catches a broken deploy or silently-unhealthy service within the hour; makes no provider calls (zero quota spend) |
+| **Live monitor** (hourly) | Probes the **production** Lightsail service and asserts this app's own contracts: `/health` phase 7, `/` service card, `/metrics` shape. Catches a broken deploy or silently-unhealthy service within the hour; makes no provider calls (zero quota spend). No write-path probe by design — the 401 BYOK contract is covered by white-box tests, and the prod keyless path is MOCK mode (200, not 401) |
 
 Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the BGE-small model (~90 MB) is cached per-OS between runs; CPU-only torch is installed *before* project deps so Linux runners never pull multi-GB CUDA wheels (same pin as the Dockerfile). Dependabot keeps actions and pip deps fresh weekly.
 
@@ -318,11 +320,13 @@ Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the 
 │   ├── eval.py          Threshold sweep: batch embed → classify → P/R/F1
 │   ├── database.py      SQLite schema + 31 labeled test pairs
 │   └── ...
-├── tests/               135 tests (unit + integration)
-├── scripts/             Sweep runner, pair checker, JSON exporter, CI smoke suite
+├── tests/               142 tests (unit + integration)
+├── scripts/             Sweep runner, JSON exporter, CI smoke suite, host provision/deploy/verify scripts, adversarial PowerShell battery (`Test-SemCache.ps1`)
 │   ├── .github/         CI workflow (lint / test matrix / docker smoke / audit) + Dependabot
 ├── data/labeled_test_pairs.json   Reproducible validation dataset
 ├── Dockerfile · .dockerignore · render.yaml · Procfile   Deployment artifacts
+├── docker-compose.yml · Caddyfile   Lightsail production stack (app + auto-HTTPS reverse proxy)
+└── .github/workflows/deploy.yml   CD: CI-green → ECR → Lightsail pull + restart
 └── docs/                PRD, technical detail, master guide, threshold analysis, progress
 ```
 
@@ -332,16 +336,16 @@ Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the 
 - [x] Phase 2 — semantic matching (BGE-small)
 - [x] Phase 3 — threshold validation (`/eval/threshold-sweep` + measured curve)
 - [x] Phase 4 — TTL expiry + manual purge + bypass header
-- [x] Phase 5 — metrics + dashboard (`/dashboard` — FastAPI + Chart.js, single service)
-- [x] Phase 6 — deployment artifacts (`Dockerfile` + `render.yaml` + `Procfile`, Docker-verified locally) · live cloud deploy: see [Deployment](#deployment-phase-6)
+- [x] Phase 5 — metrics + dashboard (`/dashboard` — FastAPI + hand-drawn SVG viz, single service; no chart library)
+- [x] Phase 6 — deployment artifacts (`Dockerfile` + `render.yaml` + `Procfile`, Docker-verified locally) · production: `https://semcache.noblechicken.me` (Lightsail Small 2GB, persistent SQLite, Caddy auto-HTTPS, ECR auto-deploy) — see [Deployment](#deployment-phase-6)
 - [x] Phase 7 — BYOK multi-user: provider allowlist (openrouter/gemini), HMAC-derived user isolation, per-user cache scoping, tokens-saved headline metric, 30-day log retention with permanent rollup
 - [ ] Stretch — wire in front of a downstream project; report before/after costs
 
 ## Dashboard
 
-Run the proxy and open **`http://127.0.0.1:8000/dashboard`** for live hit-rate/cost/latency charts, a searchable cache browser with purge actions, an interactive threshold-sweep runner, and a polling request log. (Chart.js loads from CDN — first view needs internet.)
+Run the proxy and open **`http://127.0.0.1:8000/dashboard`** for the bento Overview (hit-rate statement, speedup gauge, live alert strip, savings ledger, request-mix trend), a searchable cache browser with TTL bars and purge actions, a Threshold Lab (sweep runner + auto-tune evidence), and a polling request log. Charts are hand-drawn SVG (no chart library); Inter/Archivo/anime.js load from CDN — first view needs internet.
 
-When `ADMIN_TOKEN` is set, open **`/dashboard?token=<ADMIN_TOKEN>`** — the page picks the token up from the URL and authenticates its own purge/sweep calls automatically.
+When `ADMIN_TOKEN` is set, open **`/dashboard?token=<ADMIN_TOKEN>`** — the page picks the token up from the URL and authenticates its own purge/sweep calls automatically. Production instance: `https://semcache.noblechicken.me/dashboard?token=<ADMIN_TOKEN>`.
 
 ## Troubleshooting
 

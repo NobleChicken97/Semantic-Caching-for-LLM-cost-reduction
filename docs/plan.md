@@ -100,7 +100,7 @@ Semantic caching layer for LLM cost reduction/
 
 The recovery-era sections that lived here (missing-files narrative, OneDrive restore instructions) are resolved — full history in `progress.md` 2026-09-01/02. What is presentable today:
 
-- **Live service:** `https://semantic-cache-proxy.onrender.com` (Render free tier, `MOCK_LLM=false`, BYOK-verified with real Gemini + OpenRouter keys; runbook checks all passed).
+- **Live service:** `https://semcache.noblechicken.me` (Lightsail Small 2GB $12/mo, `MOCK_LLM=true`, persistent SSD — cache/metrics survive restarts; Caddy auto-HTTPS; image ships CI → ECR → host pull on green `main`).
 - **Local demo:** `uvicorn src.proxy.main:app` with `MOCK_LLM=true`, or against real providers with `SC_*` env keys; MISS → HIT on exact and paraphrase prompts above the 0.85 threshold (F1 0.857, re-validated).
 - **Evaluation surface:** `POST /eval/threshold-sweep` + `POST /eval/auto-tune`; README quotes the measured curve; drift-guard test pins the published dataset.
 - **Observability:** `/metrics`, `/cache/entries`, `/logs/recent`, `/dashboard?token=` (Chart.js), hourly `live-monitor` workflow asserting the deployed contracts.
@@ -108,9 +108,9 @@ The recovery-era sections that lived here (missing-files narrative, OneDrive res
 
 The only remaining stretch item is sibling-project integration (see §6).
 
-## 5. Persistence posture (decided)
+## 5. Persistence posture (decided, superseded twice)
 
-Render free tier = ephemeral disk: cache entries and metric counters reset on every deploy and 15-min idle spin-down. **Decided 2026-09-03: stay free, re-warm manually** (demo script / `Warm-Cache`); the Starter-disk and Postgres-swap upgrade paths are documented in `LAUNCH_CHECKLIST.md` Phase E and can be adopted any time.
+Render free tier = ephemeral disk: cache entries and metric counters reset on every deploy and 15-min idle spin-down. **Decided 2026-09-03 (later that day): stay free, re-warm manually** — then **superseded 2026-09-04: Lightsail Small 2GB ($12/mo) with persistent SSD + named Docker volume.** Restart/reboot/redeploy persistence proven live (MISS → HIT → restart → HIT → reboot → HIT → compose-down/re-pull → HIT). The old Render service now answers 503; the hourly live-monitor probes Lightsail instead. Upgrade paths beyond this (Postgres/Redis swap) remain documented in `LAUNCH_CHECKLIST.md` Phase E.
 
 ## 6. Decision points still on the table
 

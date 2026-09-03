@@ -77,6 +77,14 @@ The two lost directories are restored, the working tree is verified end-to-end (
   - [x] Y3 Verify (syntax, contracts, 11/11 tests, ruff, contrast) → fast-loop → screenshot → commit/push → docs
   - [x] Y4 Sharp-corner follow-up (all radii → 0; dots/orbs stay round by design) — live-verified via fast-loop + screenshot
   - [x] Y5 Gauge card composition (flex column, centered dial, 0–50× scale row) — live-verified via fast-loop + screenshot
+  - [x] Y6 Dial zoom (204px render, scale untouched) — live-verified via fast-loop + screenshot
+
+- [ ] **🟠 P1** **Docs refresh + adversarial battery (2026-09-04).**
+  - [x] Q1 README: 135 -> 142 (3 spots), Lightsail production block, dashboard rewrite, monitor row, layout/scripts + artifacts lines, Phase 5/6 lines
+  - [x] Q2 live-monitor retargeted Lightsail (Render 503s; read-only checks — 401 probe inapplicable in MOCK mode)
+  - [x] Q3 plan.md live/persistence sections + progress.md session entry
+  - [x] Q4 `scripts/Test-SemCache.ps1` (15 checks: exact/paraphrase/boundary/model-isolation/bypass/auth/validation/metrics/logs/TTL) — syntax-checked, awaiting owner run
+  - [ ] Q5 Commit + push (CI validates) → close
 
 - [ ] **🟠 P1** **Custom domain `semcache.noblechicken.me` (Namecheap → Lightsail → Caddy auto-HTTPS).** Tracked sub-todos:
   - [x] D1 Namecheap A record `semcache` → `98.95.205.92` (owner done; verified propagating via recursive + direct lookup)

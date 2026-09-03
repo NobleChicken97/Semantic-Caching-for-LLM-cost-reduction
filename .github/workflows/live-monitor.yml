@@ -1,19 +1,23 @@
 # Live-service monitor — project-specific post-deploy checks against the
-# PUBLIC Render deployment (https://semantic-cache-proxy.onrender.com).
+# PRODUCTION Lightsail deployment (https://semcache.noblechicken.me).
+# (Retired 2026-09-04 from the Render free URL: it now answers 503 and the
+# production traffic moved to Lightsail with persistent storage.)
 #
 # Why this exists: ci.yml + docker-smoke prove the code is correct BEFORE it
 # ships; this workflow proves the DEPLOYED service is actually healthy after
-# Render auto-deploys (or when it silently breaks). It asserts this app's own
+# ECR auto-deploy (or when it silently breaks). It asserts this app's own
 # contracts — never generic pings:
 #   /health          -> {"status":"ok","phase":7}
 #   /                -> service card naming "Semantic Cache Proxy"
 #   /metrics         -> hit_rate/total_requests/total_tokens_saved present
-#   keyless POST     -> 401 with the BYOK error contract
 # No provider calls are made (zero quota spend); the cache itself is untouched.
 #
-# Schedule: hourly. Each ping wakes the free instance (~15 min up), which stays
-# well inside Render's 750 free instance-hours/month while catching a broken
-# service within the hour. Manual runs via workflow_dispatch.
+# Deliberately NO write-path probe here: prod runs MOCK_LLM=true, so a keyless
+# POST returns 200 (not the 401 BYOK contract — that shape is proven by the
+# white-box suite instead), and any MISS would write rows into the production
+# metrics the interview demo reads. Read-only checks only.
+#
+# Schedule: hourly. Manual runs via workflow_dispatch.
 
 name: Live monitor
 
@@ -34,7 +38,7 @@ jobs:
       - name: Assert deployed contracts
         run: |
           set -euo pipefail
-          BASE="https://semantic-cache-proxy.onrender.com"
+          BASE="https://semcache.noblechicken.me"
 
           echo "== /health =="
           HEALTH=$(curl -sS --max-time 90 --retry 2 "$BASE/health")
@@ -66,18 +70,6 @@ jobs:
               assert k in d, (k, d)
           "
 
-          echo "== keyless POST -> 401 BYOK contract =="
-          CODE=$(curl -sS -o /tmp/keyless.json -w '%{http_code}' --max-time 90 \
-            -X POST "$BASE/v1/chat/completions" \
-            -H "Content-Type: application/json" \
-            -d '{"model":"x","messages":[{"role":"user","content":"hi"}]}')
-          echo "status: $CODE  body: $(cat /tmp/keyless.json)"
-          test "$CODE" = "401"
-          python3 -c "
-          import json
-          d = json.load(open('/tmp/keyless.json'))
-          assert d['error']['type'] == 'invalid_request_error', d
-          assert d['error']['code'] == 401, d
-          "
+          echo "== write-path probe: intentionally skipped (see header) =="
 
           echo "ALL LIVE CONTRACT CHECKS PASSED"
