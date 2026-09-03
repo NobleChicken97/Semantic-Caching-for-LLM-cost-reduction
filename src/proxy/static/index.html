@@ -1,168 +1,345 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Semantic Cache Proxy — Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
+  /* ---------- tokens ---------- */
   :root {
-    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a;
-    --text: #e6e9ef; --muted: #8b93a3; --accent: #4f8cff; --green: #34c98a;
-    --red: #ff6b6b; --amber: #ffb454;
+    --bg: #fbfbfa; --surface: #ffffff; --surface2: #f4f4f2; --border: #e5e4e0;
+    --ink: #1a1a1e; --muted: #5b5b62; --accent: #1d4ed8; --accent-ink: #ffffff;
+    --green: #166534; --green-bg: #dcfce7;
+    --amber: #92400e; --amber-bg: #fef3c7;
+    --red: #b91c1c; --red-bg: #fee2e2;
+    --gray: #57575e; --gray-bg: #ececea;
+    --radius: 10px; --shadow: 0 1px 2px rgba(20, 20, 25, .06);
+    --spring: cubic-bezier(.16, 1, .3, 1);
+  }
+  html[data-theme="dark"] {
+    --bg: #141417; --surface: #1d1d21; --surface2: #26262c; --border: #2e2e35;
+    --ink: #f4f4f5; --muted: #a8a8b3; --accent: #8aa8ff; --accent-ink: #101014;
+    --green: #4ade80; --green-bg: rgba(74, 222, 128, .13);
+    --amber: #fbbf24; --amber-bg: rgba(251, 191, 36, .13);
+    --red: #f87171; --red-bg: rgba(248, 113, 113, .13);
+    --gray: #b9b9c2; --gray-bg: rgba(185, 185, 194, .13);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+  }
+  @media (prefers-color-scheme: dark) {
+    html[data-theme="auto"] {
+      --bg: #141417; --surface: #1d1d21; --surface2: #26262c; --border: #2e2e35;
+      --ink: #f4f4f5; --muted: #a8a8b3; --accent: #8aa8ff; --accent-ink: #101014;
+      --green: #4ade80; --green-bg: rgba(74, 222, 128, .13);
+      --amber: #fbbf24; --amber-bg: rgba(251, 191, 36, .13);
+      --red: #f87171; --red-bg: rgba(248, 113, 113, .13);
+      --gray: #b9b9c2; --gray-bg: rgba(185, 185, 194, .13);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+    }
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
-  header { display: flex; align-items: center; gap: 16px; padding: 14px 22px; border-bottom: 1px solid var(--border); }
-  header h1 { font-size: 16px; font-weight: 600; }
-  header .sub { color: var(--muted); font-size: 12px; }
-  nav { display: flex; gap: 4px; margin-left: auto; }
-  nav button {
-    background: transparent; color: var(--muted); border: 1px solid transparent;
-    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  html { color-scheme: light dark; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  nav button.active { background: var(--panel2); color: var(--text); border-color: var(--border); }
-  main { padding: 20px 22px; max-width: 1200px; margin: 0 auto; }
-  .tab { display: none; } .tab.active { display: block; }
+  .num { font-variant-numeric: tabular-nums; }
 
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
-  .card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-  .card .value { font-size: 28px; font-weight: 700; margin-top: 6px; }
-  .card .value small { font-size: 13px; color: var(--muted); font-weight: 400; }
-  .grid2 { display: grid; grid-template-columns: 280px 1fr; gap: 14px; margin-top: 14px; }
-  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
-  canvas { max-height: 260px; }
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 12px 22px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--green); }
+  .dot.bad { background: var(--red); }
+  header h1 { font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  header .sub code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+  nav { display: flex; gap: 2px; margin-left: auto; align-items: center; flex-wrap: wrap; }
+  nav button.tabbtn {
+    background: transparent; color: var(--muted); border: 1px solid transparent;
+    padding: 7px 13px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 550;
+  }
+  nav button.tabbtn:hover { color: var(--ink); background: var(--surface2); }
+  nav button.tabbtn.active { color: var(--ink); background: var(--surface2); border-color: var(--border); }
+  #theme-toggle {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 11px; cursor: pointer; font-size: 12px; font-weight: 550;
+  }
+  #theme-toggle:hover { color: var(--ink); }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  main { padding: 20px 22px 40px; max-width: 1180px; margin: 0 auto; }
+  .tab { display: none; }
+  .tab.active { display: block; animation: tab-in 180ms var(--spring); }
+  @keyframes tab-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* ---------- headline stats ---------- */
+  .stats { display: flex; flex-wrap: wrap; gap: 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .stat { padding: 16px 20px; min-width: 150px; flex: 1 1 0; border-left: 1px solid var(--border); }
+  .stat:first-child { border-left: 0; }
+  .stat.hero { flex-grow: 1.6; }
+  .stat .label { color: var(--muted); font-size: 12px; font-weight: 550; }
+  .stat .value { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin-top: 2px; }
+  .stat.hero .value { font-size: 32px; }
+  .stat .cap { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .stat .value small { font-size: 13px; color: var(--muted); font-weight: 500; }
+
+  /* ---------- panels & grid ---------- */
+  .panel { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow); padding: 16px 18px; margin-top: 14px; }
+  .panel > .label { color: var(--muted); font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+  .panel .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid2 > .panel { margin-top: 0; }
+  .grid2-wrap { margin-top: 14px; }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } .stat { min-width: 45%; border-left: 0; border-top: 1px solid var(--border); } .stat:nth-child(-n+2) { border-top: 0; } }
+  canvas { max-height: 240px; }
 
   .row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-  input[type=text], input[type=number] {
-    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none; min-width: 220px;
+  input[type=text], input[type=number], select {
+    background: var(--surface); color: var(--ink); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none;
   }
-  input:focus { border-color: var(--accent); }
+  input[type=text] { min-width: 220px; }
+  input:focus, select:focus { border-color: var(--accent); }
   button.primary {
-    background: var(--accent); color: #fff; border: 0; border-radius: 8px;
-    padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 600;
+    background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px;
+    padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 650;
   }
-  button.danger { background: transparent; color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
-  button.small { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
+  button.primary:disabled { opacity: .55; cursor: wait; }
+  button.danger { background: transparent; color: var(--red); border: 1px solid currentColor; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 600; }
+  button.small { background: var(--surface2); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 550; }
+  button.small:hover { border-color: var(--muted); }
   label.toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; }
 
-  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
-  th { background: var(--panel2); color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  /* ---------- tables ---------- */
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); }
   tr:last-child td { border-bottom: 0; }
-  td.num { font-variant-numeric: tabular-nums; }
+  tbody tr:hover td { background: var(--surface2); }
   .prompt-cell { max-width: 380px; overflow-wrap: anywhere; }
-  tr.hl td { background: rgba(79, 140, 255, .12); }
-
-  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-  .badge.HIT    { background: rgba(52,201,138,.15); color: var(--green); }
-  .badge.MISS   { background: rgba(255,180,84,.15); color: var(--amber); }
-  .badge.BYPASS { background: rgba(139,147,163,.15); color: var(--muted); }
-
-  .muted { color: var(--muted); } .empty { color: var(--muted); padding: 24px; text-align: center; }
+  tr.hl td { background: var(--green-bg); }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .badge.HIT { background: var(--green-bg); color: var(--green); }
+  .badge.MISS { background: var(--amber-bg); color: var(--amber); }
+  .badge.BYPASS, .badge.ERROR { background: var(--gray-bg); color: var(--gray); }
+  .badge.expected-yes { background: var(--green-bg); color: var(--green); }
+  .badge.expected-no { background: var(--red-bg); color: var(--red); }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); padding: 26px 16px; text-align: center; font-size: 13px; }
+  .empty b { color: var(--ink); font-weight: 650; }
   .err { color: var(--red); font-size: 12px; margin-top: 6px; min-height: 16px; }
+  .ttl { display: block; height: 3px; background: var(--surface2); border-radius: 2px; margin-top: 5px; min-width: 80px; overflow: hidden; }
+  .ttl i { display: block; height: 100%; background: var(--green); border-radius: 2px; }
+  .skel { display: block; height: 13px; border-radius: 6px; background: var(--surface2); overflow: hidden; position: relative; }
+  .skel::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    animation: shimmer 1.2s infinite; }
+  @keyframes shimmer { to { transform: translateX(100%); } }
+
+  .tune-result { display: flex; gap: 26px; flex-wrap: wrap; align-items: baseline; margin: 4px 0 12px; }
+  .tune-result .big { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+  .tune-result .lab { color: var(--muted); font-size: 12px; font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tab.active { animation: none; }
+    .skel::after { animation: none; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <div>
-    <h1>Semantic Cache Proxy</h1>
-    <div class="sub">hit-rate · cost saved · latency — live from <code id="base-url"></code></div>
+  <div class="brand">
+    <span class="dot" id="live-dot" title="backend reachability"></span>
+    <div>
+      <h1>Semantic Cache Proxy</h1>
+      <div class="sub">hit-rate · cost saved · latency — live from <code id="base-url"></code></div>
+    </div>
   </div>
-  <nav>
-    <button data-tab="metrics" class="active">Metrics</button>
-    <button data-tab="cache">Cache Browser</button>
-    <button data-tab="sweep">Threshold Sweep</button>
-    <button data-tab="logs">Request Log</button>
+  <nav aria-label="Dashboard sections">
+    <button class="tabbtn active" data-tab="metrics">Metrics</button>
+    <button class="tabbtn" data-tab="cache">Cache Browser</button>
+    <button class="tabbtn" data-tab="sweep">Threshold Sweep</button>
+    <button class="tabbtn" data-tab="logs">Request Log</button>
+    <button id="theme-toggle" title="color theme: system / light / dark">theme: system</button>
   </nav>
 </header>
 
 <main>
   <!-- ============ METRICS ============ -->
-  <section id="tab-metrics" class="tab active">
+  <section id="tab-metrics" class="tab active" aria-label="Metrics">
     <div class="row">
-      <button class="primary" onclick="loadMetrics()">Refresh now</button>
+      <button class="primary" id="btn-refresh-metrics">Refresh now</button>
       <label class="toggle"><input type="checkbox" id="auto-metrics" checked> auto-refresh every 5 s</label>
       <span id="metrics-updated" class="muted" style="font-size:12px"></span>
     </div>
-    <div class="cards">
-      <div class="card"><div class="label">Tokens saved</div><div class="value" id="m-tokens">–</div></div>
-      <div class="card"><div class="label">Hit rate</div><div class="value" id="m-hitrate">–</div></div>
-      <div class="card"><div class="label">Total requests</div><div class="value" id="m-total">–</div></div>
-      <div class="card"><div class="label">Estimated cost saved</div><div class="value" id="m-cost">–</div></div>
-      <div class="card"><div class="label">Avg latency · HIT vs MISS</div><div class="value" style="font-size:18px" id="m-lat">–</div></div>
+    <div class="stats" role="group" aria-label="Headline savings">
+      <div class="stat hero"><div class="label">Tokens saved</div><div class="value num" id="m-tokens">–</div><div class="cap" id="m-req-cap">–</div></div>
+      <div class="stat"><div class="label">Hit rate</div><div class="value num" id="m-hitrate">–</div><div class="cap" id="m-hits-cap">–</div></div>
+      <div class="stat"><div class="label">Speedup</div><div class="value num" id="m-speedup">–</div><div class="cap" id="m-lat-cap">–</div></div>
+      <div class="stat"><div class="label">Est. cost saved</div><div class="value num" id="m-cost">–</div><div class="cap">gpt-3.5-turbo pricing; free models $0</div></div>
     </div>
-    <div class="grid2">
-      <div class="card"><div class="label">Hit / miss split</div><canvas id="chart-split"></canvas></div>
-      <div class="card"><div class="label">Average latency by outcome (ms)</div><canvas id="chart-latency"></canvas></div>
+    <div class="grid2-wrap grid2">
+      <div class="panel"><div class="label">Request mix over time (recent log)</div><canvas id="chart-trend"></canvas><div class="hint" id="trend-hint"></div></div>
+      <div class="panel"><div class="label">Hit / miss split (lifetime)</div><canvas id="chart-split"></canvas></div>
     </div>
-    <div class="card" style="margin-top:14px">
+    <div class="panel">
       <div class="label">Per-user savings</div>
-      <table style="margin-top:10px">
-        <thead><tr><th>User</th><th>Requests</th><th>Hits</th><th>Tokens saved</th><th>Cost saved</th></tr></thead>
+      <table>
+        <thead><tr><th scope="col">User</th><th scope="col">Requests</th><th scope="col">Hits</th><th scope="col">Tokens saved</th><th scope="col">Cost saved</th></tr></thead>
         <tbody id="users-body"><tr><td colspan="5" class="empty">No data yet.</td></tr></tbody>
       </table>
     </div>
   </section>
 
   <!-- ============ CACHE BROWSER ============ -->
-  <section id="tab-cache" class="tab">
+  <section id="tab-cache" class="tab" aria-label="Cache browser">
     <div class="row">
-      <input type="text" id="cache-search" placeholder="Search prompts…">
-      <button class="small" onclick="loadCache()">Reload</button>
+      <input type="text" id="cache-search" placeholder="Search prompts…" aria-label="Search cached prompts">
+      <button class="small" id="btn-reload-cache">Reload</button>
       <span style="flex:1"></span>
-      <button class="danger" onclick="purgeAll()">Purge ALL</button>
+      <button class="danger" id="btn-purge-all">Purge ALL</button>
     </div>
-    <table>
-      <thead><tr>
-        <th>ID</th><th>Prompt</th><th>Model</th><th>Created</th><th>Expires</th><th>Hits</th><th>Last hit</th><th></th>
-      </tr></thead>
-      <tbody id="cache-body"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
-    </table>
+    <div class="err" id="cache-error"></div>
+    <div class="panel" style="margin-top:0;padding:4px 6px;">
+      <table>
+        <thead><tr>
+          <th scope="col">ID</th><th scope="col">Prompt</th><th scope="col">Model</th><th scope="col">Created</th><th scope="col">Expires</th><th scope="col">Hits</th><th scope="col">Last hit</th><th scope="col"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Actions</span></th>
+        </tr></thead>
+        <tbody id="cache-body"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
     <div id="cache-count" class="muted" style="margin-top:8px;font-size:12px"></div>
   </section>
 
   <!-- ============ THRESHOLD SWEEP ============ -->
-  <section id="tab-sweep" class="tab">
+  <section id="tab-sweep" class="tab" aria-label="Threshold sweep">
     <div class="row">
-      <input type="text" id="sweep-thresholds" value="0.80, 0.82, 0.85, 0.88, 0.90, 0.93, 0.95">
-      <button class="primary" onclick="runSweep()">Run sweep</button>
-      <span class="muted" style="font-size:12px">Comma-separated cosine thresholds evaluated against the labeled pair set.</span>
+      <input type="text" id="sweep-thresholds" value="0.80, 0.82, 0.85, 0.88, 0.90, 0.93, 0.95" aria-label="Threshold grid">
+      <button class="primary" id="btn-run-sweep">Run sweep</button>
+      <button class="small" id="btn-auto-tune">Auto-tune threshold</button>
     </div>
     <div class="err" id="sweep-error"></div>
-    <div class="card" style="margin-bottom:14px"><canvas id="chart-sweep"></canvas></div>
-    <table>
-      <thead><tr><th>Threshold</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
-      <tbody id="sweep-body"><tr><td colspan="4" class="empty">Run a sweep to see precision/recall.</td></tr></tbody>
-    </table>
-    <p class="muted" style="margin-top:10px;font-size:12px">
-      Default production threshold is <b>0.85</b> — measured F1-optimal on the labeled set (see docs/THRESHOLD_ANALYSIS.md).
-    </p>
+    <div class="panel" id="tune-panel" hidden>
+      <div class="label">Auto-tune evidence</div>
+      <div class="tune-result">
+        <div><div class="lab">recommended</div><div class="big num" id="tune-best">–</div></div>
+        <div><div class="lab">F1 at pick</div><div class="big num" id="tune-f1">–</div></div>
+      </div>
+      <div class="hint" style="margin:0 0 10px">Borderline labeled pairs within ±0.03 of the pick — the concrete cases the threshold decision rests on.</div>
+      <table>
+        <thead><tr><th scope="col">Prompt A</th><th scope="col">Prompt B</th><th scope="col">Similarity</th><th scope="col">Labeled</th></tr></thead>
+        <tbody id="tune-body"></tbody>
+      </table>
+    </div>
+    <div class="panel"><div class="label">Precision / recall / F1 by threshold</div><canvas id="chart-sweep"></canvas></div>
+    <div class="panel">
+      <table>
+        <thead><tr><th scope="col">Threshold</th><th scope="col">Precision</th><th scope="col">Recall</th><th scope="col">F1</th></tr></thead>
+        <tbody id="sweep-body"><tr><td colspan="4" class="empty">Run a sweep to see precision/recall.</td></tr></tbody>
+      </table>
+      <p class="muted" style="margin-top:10px;font-size:12px">
+        Production threshold is <b>0.85</b> — measured F1-optimal on the labeled set (see docs/THRESHOLD_ANALYSIS.md).
+      </p>
+    </div>
   </section>
 
   <!-- ============ REQUEST LOG ============ -->
-  <section id="tab-logs" class="tab">
+  <section id="tab-logs" class="tab" aria-label="Request log">
     <div class="row">
-      <button class="primary" onclick="loadLogs()">Refresh</button>
+      <button class="primary" id="btn-refresh-logs">Refresh</button>
       <label class="toggle"><input type="checkbox" id="auto-logs" checked> poll every 4 s while visible</label>
-      <select id="log-limit" style="background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:7px">
+      <select id="log-limit" aria-label="Rows to show">
         <option>25</option><option selected>50</option><option>100</option><option>250</option>
       </select>
+      <select id="log-filter" aria-label="Filter by outcome">
+        <option value="">all outcomes</option>
+        <option value="HIT">HIT</option>
+        <option value="MISS">MISS</option>
+        <option value="BYPASS">BYPASS</option>
+        <option value="ERROR">ERROR</option>
+      </select>
     </div>
-    <table>
-      <thead><tr><th>Time</th><th>Outcome</th><th>Prompt</th><th>Similarity</th><th>Latency</th><th>Tokens in/out</th><th>Est. cost</th></tr></thead>
-      <tbody id="logs-body"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
-    </table>
+    <div class="panel" style="margin-top:0;padding:4px 6px;">
+      <table>
+        <thead><tr><th scope="col">Time</th><th scope="col">Outcome</th><th scope="col">Prompt</th><th scope="col">Similarity</th><th scope="col">Latency</th><th scope="col">Tokens in/out</th><th scope="col">Est. cost</th></tr></thead>
+        <tbody id="logs-body"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
   </section>
 </main>
 
-<script>
-const $ = id => document.getElementById(id);
-$("base-url").textContent = location.origin;
+<script type="module">
+// ---------- tiny motion layer (anime.js v4, ESM, degrades to instant) ----------
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let Anime = null;
+async function ensureAnime() {
+  if (Anime || REDUCED) return Anime;
+  try {
+    const m = await import("https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.esm.min.js");
+    if (m && m.animate && m.stagger) Anime = { animate: m.animate, stagger: m.stagger };
+  } catch (e) { Anime = null; }
+  return Anime;
+}
+// Count-up that ALWAYS ends on the exact value: text is set correctly even if
+// the library never loads or a frame callback never fires (progressive enhancement).
+async function countUp(el, to, fmt) {
+  const from = (typeof el._v === "number") ? el._v : 0;
+  el._v = to;
+  el.textContent = fmt(to);
+  if (REDUCED || from === to) return;
+  const A = await ensureAnime();
+  if (!A) return;
+  try {
+    const o = { v: from };
+    A.animate(o, { v: to, duration: 450, ease: "outExpo", onUpdate: () => { el.textContent = fmt(o.v); } });
+    el.textContent = fmt(to);
+  } catch (e) { /* text already correct */ }
+}
+// Row entrances: rows are fully visible by default; animation only enhances.
+async function staggerIn(tbody) {
+  if (REDUCED) return;
+  const rows = tbody.querySelectorAll("tr");
+  if (!rows.length) return;
+  const A = await ensureAnime();
+  if (!A) return;
+  try { A.animate(rows, { opacity: [0, 1], translateY: [6, 0], delay: A.stagger(18), duration: 220, ease: "outExpo" }); }
+  catch (e) { /* static rows are fine */ }
+}
+
+// ---------- theme (system / light / dark) ----------
+const root = document.documentElement;
+const themeBtn = document.getElementById("theme-toggle");
+function systemDark() { return matchMedia("(prefers-color-scheme: dark)").matches; }
+function paintTheme() {
+  const pref = localStorage.getItem("scp-theme") || "system";
+  root.dataset.theme = pref === "system" ? "auto" : pref;
+  themeBtn.textContent = "theme: " + pref;
+  rebuildCharts();
+}
+themeBtn.onclick = () => {
+  const order = ["system", "light", "dark"];
+  const next = order[(order.indexOf(localStorage.getItem("scp-theme") || "system") + 1) % order.length];
+  localStorage.setItem("scp-theme", next);
+  paintTheme();
+};
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
+  if ((localStorage.getItem("scp-theme") || "system") === "system") rebuildCharts();
+});
 
 // ---------- helpers ----------
+const $ = id => document.getElementById(id);
+$("base-url").textContent = location.origin;
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
@@ -175,8 +352,17 @@ async function api(path, opts) {
   const headers = Object.assign({}, opts.headers || {});
   if (ADMIN_TOKEN) headers["Authorization"] = "Bearer " + ADMIN_TOKEN;
   const r = await fetch(path, Object.assign({}, opts, { headers: headers }));
+  if (r.status === 401) throw new Error(`${path} → 401: admin token required — open /dashboard?token=<ADMIN_TOKEN>.`);
   if (!r.ok) throw new Error(`${path} → HTTP ${r.status}`);
   return r.json();
+}
+function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function palette() {
+  return {
+    text: cssVar("--ink") || "#888", muted: cssVar("--muted") || "#888",
+    grid: cssVar("--border") || "#333", green: cssVar("--green"), amber: cssVar("--amber"),
+    gray: cssVar("--gray"), red: cssVar("--red"), accent: cssVar("--accent"),
+  };
 }
 function fmtTime(ts) {
   const d = new Date(ts * 1000);
@@ -197,22 +383,34 @@ function fmtAgo(ts) {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
+function skelRows(cols, n) {
+  let h = "";
+  for (let i = 0; i < n; i++) {
+    h += "<tr>" + Array(cols).fill('<td><span class="skel"></span></td>').join("") + "</tr>";
+  }
+  return h;
+}
+function setDot(ok) {
+  const d = $("live-dot");
+  d.classList.remove("ok", "bad");
+  d.classList.add(ok ? "ok" : "bad");
+}
 
 // ---------- tabs ----------
 let activeTab = "metrics";
 function activateTab(name) {
-  const btn = document.querySelector(`nav button[data-tab="${name}"]`);
+  const btn = document.querySelector(`nav button.tabbtn[data-tab="${name}"]`);
   if (!btn) return;
-  document.querySelectorAll("nav button").forEach(x => x.classList.remove("active"));
+  document.querySelectorAll("nav button.tabbtn").forEach(x => x.classList.remove("active"));
   btn.classList.add("active");
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
   $("tab-" + name).classList.add("active");
   activeTab = name;
-  if (activeTab === "metrics") loadMetrics();
+  if (activeTab === "metrics") { loadMetrics(); loadTrend(); }
   if (activeTab === "cache") loadCache();
   if (activeTab === "logs") loadLogs();
 }
-document.querySelectorAll("nav button").forEach(b => { b.onclick = () => activateTab(b.dataset.tab); });
+document.querySelectorAll("nav button.tabbtn").forEach(b => { b.onclick = () => activateTab(b.dataset.tab); });
 
 // deep-link support: /dashboard?tab=sweep&token=<ADMIN_TOKEN> opens on that tab
 const urlTab = new URLSearchParams(location.search).get("tab");
@@ -221,15 +419,76 @@ if (urlTab) {
   if (urlTab === "sweep") runSweep();  // pre-run so the view isn't empty on deep-link
 }
 
+// ---------- charts (rebuilt on theme change from cached payloads) ----------
+let splitChart = null, trendChart = null, sweepChart = null;
+let lastMetrics = null, lastTrend = null, lastSweep = null;
+function rebuildCharts() {
+  if (splitChart && lastMetrics) { splitChart.destroy(); splitChart = null; drawSplit(lastMetrics); }
+  if (trendChart && lastTrend) { trendChart.destroy(); trendChart = null; drawTrend(lastTrend); }
+  if (sweepChart && lastSweep) { sweepChart.destroy(); sweepChart = null; drawSweep(lastSweep); }
+}
+function drawSplit(m) {
+  const p = palette();
+  const hits = Math.round(m.total_requests * m.hit_rate);
+  const data = { labels: ["HIT", "MISS"], datasets: [{ data: [hits, m.total_requests - hits], backgroundColor: [p.green, p.amber], borderWidth: 0 }] };
+  splitChart = new Chart($("chart-split"), { type: "doughnut", data: data, options: { plugins: { legend: { labels: { color: p.muted } } } } });
+}
+function drawTrend(t) {
+  const p = palette();
+  const data = {
+    labels: t.labels,
+    datasets: [
+      { label: "HIT", data: t.hits, backgroundColor: p.green, borderRadius: 3 },
+      { label: "MISS", data: t.misses, backgroundColor: p.amber, borderRadius: 3 },
+      { label: "other", data: t.other, backgroundColor: p.gray, borderRadius: 3 },
+    ],
+  };
+  trendChart = new Chart($("chart-trend"), {
+    type: "bar", data: data,
+    options: { plugins: { legend: { labels: { color: p.muted, boxWidth: 12 } } },
+      scales: { x: { stacked: true, ticks: { color: p.muted, maxTicksLimit: 8 }, grid: { display: false } },
+                y: { stacked: true, ticks: { color: p.muted, precision: 0 }, grid: { color: p.grid } } } },
+  });
+}
+function drawSweep(rs) {
+  const p = palette();
+  const data = {
+    labels: rs.map(r => r.threshold.toFixed(2)),
+    datasets: [
+      { label: "precision", data: rs.map(r => r.precision), borderColor: p.accent, tension: .3 },
+      { label: "recall", data: rs.map(r => r.recall), borderColor: p.green, tension: .3 },
+      { label: "F1", data: rs.map(r => r.f1), borderColor: p.amber, tension: .3 },
+    ],
+  };
+  sweepChart = new Chart($("chart-sweep"), {
+    type: "line", data: data,
+    options: { scales: { x: { ticks: { color: p.muted }, grid: { color: p.grid } }, y: { min: 0, max: 1, ticks: { color: p.muted }, grid: { color: p.grid } } }, plugins: { legend: { labels: { color: p.muted, boxWidth: 12 } } } },
+  });
+}
+
 // ---------- metrics ----------
-let splitChart = null, latencyChart = null;
 async function loadMetrics() {
   try {
     const m = await api("/metrics");
-    $("m-tokens").textContent = (m.total_tokens_saved ?? 0).toLocaleString();
-    $("m-hitrate").innerHTML = (m.hit_rate * 100).toFixed(1) + "<small> %</small>";
-    $("m-total").textContent = m.total_requests;
-    $("m-cost").innerHTML = "$" + m.estimated_cost_saved_usd.toFixed(4);
+    lastMetrics = m;
+    setDot(true);
+    const tokens = m.total_tokens_saved ?? 0;
+    const hits = Math.round(m.total_requests * m.hit_rate);
+    countUp($("m-tokens"), tokens, v => Math.round(v).toLocaleString());
+    countUp($("m-hitrate"), (m.hit_rate ?? 0) * 100, v => v.toFixed(1) + " %");
+    countUp($("m-total"), m.total_requests ?? 0, v => String(Math.round(v)));
+    $("m-cost").textContent = "$" + (m.estimated_cost_saved_usd ?? 0).toFixed(4);
+    $("m-req-cap").textContent = `${m.total_requests} requests · ${hits} served from cache`;
+    $("m-hits-cap").textContent = `${hits} HIT · ${m.total_requests - hits} MISS`;
+    const hitMs = m.avg_latency_hit_ms ?? 0, missMs = m.avg_latency_miss_ms ?? 0;
+    const f = v => v >= 10 ? v.toFixed(0) : v.toFixed(2);
+    if (hitMs > 0 && missMs > 0) {
+      countUp($("m-speedup"), missMs / hitMs, v => v.toFixed(1) + "×");
+      $("m-lat-cap").textContent = `${f(hitMs)} ms HIT vs ${f(missMs)} ms MISS`;
+    } else {
+      $("m-speedup").textContent = "–";
+      $("m-lat-cap").textContent = "send traffic to measure";
+    }
 
     const users = (m.per_user ?? []).slice().sort((a, b) => b.tokens_saved - a.tokens_saved);
     $("users-body").innerHTML = users.length ? users.map(u => `
@@ -240,71 +499,115 @@ async function loadMetrics() {
         <td class="num">${u.tokens_saved.toLocaleString()}</td>
         <td class="num">$${u.cost_saved_usd.toFixed(6)}</td>
       </tr>`).join("")
-      : `<tr><td colspan="5" class="empty">No requests logged yet.</td></tr>`;
-    const f = v => v >= 10 ? v.toFixed(0) : v.toFixed(2);
-    $("m-lat").innerHTML =
-      `<span style="color:var(--green)">${f(m.avg_latency_hit_ms ?? 0)} ms</small>` +
-      ` <span class="muted">vs</span> <span style="color:var(--amber)">${f(m.avg_latency_miss_ms ?? 0)} ms</span>`;
+      : `<tr><td colspan="5" class="empty"><b>No requests logged yet.</b><br>POST a prompt twice to see MISS → HIT here.</td></tr>`;
     $("metrics-updated").textContent = "updated " + new Date().toLocaleTimeString();
 
-    const hits = Math.round(m.total_requests * m.hit_rate);
-    const misses = m.total_requests - hits;
-    const splitData = { labels: ["HIT", "MISS"], datasets: [{ data: [hits, misses], backgroundColor: ["#34c98a", "#ffb454"], borderWidth: 0 }] };
-    if (splitChart) { splitChart.data = splitData; splitChart.update(); }
-    else splitChart = new Chart($("chart-split"), { type: "doughnut", data: splitData, options: { plugins: { legend: { labels: { color: "#8b93a3" } } } } });
-
-    const latData = {
-      labels: ["HIT", "MISS"],
-      datasets: [{ label: "avg latency (ms)", data: [m.avg_latency_hit_ms ?? 0, m.avg_latency_miss_ms ?? 0], backgroundColor: ["#34c98a", "#ffb454"], borderRadius: 6 }],
-    };
-    if (latencyChart) { latencyChart.data = latData; latencyChart.update(); }
-    else latencyChart = new Chart($("chart-latency"), { type: "bar", data: latData, options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: "#8b93a3" }, grid: { display: false } }, y: { ticks: { color: "#8b93a3" }, grid: { color: "#2a2f3a" } } } } });
-  } catch (e) { $("metrics-updated").textContent = "error: " + e.message; }
+    if (splitChart) { splitChart.destroy(); splitChart = null; }
+    drawSplit(m);
+  } catch (e) { setDot(false); $("metrics-updated").textContent = "error: " + e.message; }
 }
-setInterval(() => { if ($("auto-metrics").checked && activeTab === "metrics") loadMetrics(); }, 5000);
+$("btn-refresh-metrics").onclick = () => { loadMetrics(); loadTrend(); };
+setInterval(() => { if ($("auto-metrics").checked && activeTab === "metrics") { loadMetrics(); loadTrend(); } }, 5000);
+
+// ---------- outcome trend (bucketed from the recent-log window) ----------
+async function loadTrend() {
+  try {
+    const data = await api("/logs/recent?limit=500");
+    const logs = (data.logs ?? []).slice().sort((a, b) => a.timestamp - b.timestamp);
+    if (!logs.length) {
+      lastTrend = null;
+      if (trendChart) { trendChart.destroy(); trendChart = null; }
+      $("trend-hint").textContent = "No requests in the window yet — trend appears after traffic.";
+      return;
+    }
+    const span = Math.max(1, logs[logs.length - 1].timestamp - logs[0].timestamp);
+    const buckets = Math.min(24, Math.max(4, Math.round(Math.sqrt(logs.length))));
+    const width = span / buckets;
+    const t0 = logs[0].timestamp;
+    const hits = new Array(buckets).fill(0), misses = new Array(buckets).fill(0), other = new Array(buckets).fill(0);
+    const labels = [];
+    for (let i = 0; i < buckets; i++) {
+      const end = t0 + width * (i + 1);
+      labels.push(new Date(end * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}));
+    }
+    for (const l of logs) {
+      const i = Math.min(buckets - 1, Math.floor((l.timestamp - t0) / width));
+      if (l.outcome === "HIT") hits[i]++;
+      else if (l.outcome === "MISS") misses[i]++;
+      else other[i]++;
+    }
+    lastTrend = { labels, hits, misses, other };
+    $("trend-hint").textContent = `${logs.length} recent request${logs.length === 1 ? "" : "s"} bucketed ×${buckets}.`;
+    if (trendChart) { trendChart.destroy(); trendChart = null; }
+    drawTrend(lastTrend);
+  } catch (e) { $("trend-hint").textContent = "error: " + e.message; }
+}
 
 // ---------- cache browser ----------
+let cacheTimer = null;
 async function loadCache() {
   const q = $("cache-search").value.trim();
+  $("cache-error").textContent = "";
+  $("cache-body").innerHTML = skelRows(8, 5);
   try {
     const data = await api("/cache/entries" + (q ? `?q=${encodeURIComponent(q)}` : ""));
-    const rows = data.entries.map(e => `
+    const now = Date.now() / 1000;
+    const rows = data.entries.map(e => {
+      const expired = e.expires_at * 1000 < Date.now();
+      const ttlPct = expired ? 0 : Math.max(0, Math.min(100, ((e.expires_at - now) / Math.max(1, e.expires_at - e.created_at)) * 100));
+      return `
       <tr>
         <td class="num">${e.entry_id}</td>
         <td class="prompt-cell" title="${esc(e.prompt_text)}">${esc(e.prompt_text.length > 90 ? e.prompt_text.slice(0, 90) + "…" : e.prompt_text)}</td>
         <td>${esc(e.model_used)}</td>
-        <td title="${new Date(e.created_at * 1000).toLocaleString()}">${fmtAgo(e.created_at)}</td>
-        <td title="${new Date(e.expires_at * 1000).toLocaleString()}">${new Date(e.expires_at * 1000) < new Date() ? "<span class='muted'>expired</span>" : fmtAgo(e.expires_at)}</td>
+        <td class="num" title="${new Date(e.created_at * 1000).toLocaleString()}">${fmtAgo(e.created_at)}</td>
+        <td class="num" title="${new Date(e.expires_at * 1000).toLocaleString()}">${expired ? "<span class='muted'>expired</span>" : fmtAgo(e.expires_at)}<span class="ttl"><i style="width:${ttlPct.toFixed(0)}%"></i></span></td>
         <td class="num">${e.hit_count}</td>
-        <td>${fmtAgo(e.last_hit_at)}</td>
-        <td><button class="danger" onclick="purgeOne(${e.entry_id})">Purge</button></td>
-      </tr>`);
-    $("cache-body").innerHTML = rows.length ? rows.join("") : `<tr><td colspan="8" class="empty">No cache entries${q ? " matching “" + esc(q) + "”" : ""}.</td></tr>`;
+        <td class="num">${fmtAgo(e.last_hit_at)}</td>
+        <td><button class="danger" data-purge="${e.entry_id}">Purge</button></td>
+      </tr>`;
+    });
+    $("cache-body").innerHTML = rows.length ? rows.join("") : `<tr><td colspan="8" class="empty"><b>No cache entries${q ? " matching “" + esc(q) + "”" : ""}.</b><br>Entries appear here after a MISS stores a response.</td></tr>`;
+    $("cache-body").querySelectorAll("button[data-purge]").forEach(b => {
+      b.onclick = () => purgeOne(parseInt(b.dataset.purge, 10));
+    });
+    staggerIn($("cache-body"));
     $("cache-count").textContent = `${data.entries.length} entr${data.entries.length === 1 ? "y" : "ies"}${q ? " (filtered)" : ""}`;
-  } catch (e) { $("cache-count").textContent = "error: " + e.message; }
+  } catch (e) { $("cache-body").innerHTML = `<tr><td colspan="8" class="empty">error: ${esc(e.message)}</td></tr>`; }
 }
-$("cache-search").addEventListener("input", () => loadCache());
+$("cache-search").addEventListener("input", () => { clearTimeout(cacheTimer); cacheTimer = setTimeout(loadCache, 250); });
+$("btn-reload-cache").onclick = loadCache;
 async function purgeOne(id) {
   if (!confirm(`Purge cache entry #${id}?`)) return;
-  await api("/cache/purge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entry_id: id }) });
-  loadCache();
+  $("cache-error").textContent = "";
+  try {
+    await api("/cache/purge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entry_id: id }) });
+    loadCache();
+  } catch (e) { $("cache-error").textContent = e.message; }
 }
 async function purgeAll() {
   if (!confirm("Purge the ENTIRE cache? Log history is preserved.")) return;
-  await api("/cache/purge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-  loadCache();
+  $("cache-error").textContent = "";
+  try {
+    await api("/cache/purge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    loadCache();
+  } catch (e) { $("cache-error").textContent = e.message; }
 }
+$("btn-purge-all").onclick = purgeAll;
 
-// ---------- sweep ----------
-let sweepChart = null;
+// ---------- sweep + auto-tune ----------
 async function runSweep() {
   $("sweep-error").textContent = "";
   const raw = $("sweep-thresholds").value.split(",").map(x => parseFloat(x.trim())).filter(x => !isNaN(x));
   if (!raw.length) { $("sweep-error").textContent = "Enter at least one numeric threshold."; return; }
+  const btn = $("btn-run-sweep");
+  btn.disabled = true;
+  $("sweep-body").innerHTML = skelRows(4, 4);
   try {
     const data = await api("/eval/threshold-sweep", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ thresholds: raw }) });
     const rs = data.results;
-    let best = rs.reduce((a, b) => (b.f1 > a.f1 ? b : a), rs[0]);
+    lastSweep = rs;
+    const best = rs.reduce((a, b) => (b.f1 > a.f1 ? b : a), rs[0]);
     $("sweep-body").innerHTML = rs.map(r => `
       <tr class="${r.threshold === best.threshold ? "hl" : ""}">
         <td class="num">${r.threshold.toFixed(2)}${r.threshold === best.threshold ? ' <span class="badge HIT">best F1</span>' : ""}</td>
@@ -312,28 +615,44 @@ async function runSweep() {
         <td class="num">${r.recall.toFixed(4)}</td>
         <td class="num">${r.f1.toFixed(4)}</td>
       </tr>`).join("");
-    const chartData = {
-      labels: rs.map(r => r.threshold.toFixed(2)),
-      datasets: [
-        { label: "precision", data: rs.map(r => r.precision), borderColor: "#4f8cff", tension: .3 },
-        { label: "recall", data: rs.map(r => r.recall), borderColor: "#34c98a", tension: .3 },
-        { label: "F1", data: rs.map(r => r.f1), borderColor: "#ffb454", tension: .3 },
-      ],
-    };
-    if (sweepChart) { sweepChart.data = chartData; sweepChart.update(); }
-    else sweepChart = new Chart($("chart-sweep"), {
-      type: "line", data: chartData,
-      options: { scales: { x: { ticks: { color: "#8b93a3" }, grid: { color: "#2a2f3a" } }, y: { min: 0, max: 1, ticks: { color: "#8b93a3" }, grid: { color: "#2a2f3a" } } }, plugins: { legend: { labels: { color: "#8b93a3" } } } },
-    });
-  } catch (e) { $("sweep-error").textContent = e.message; }
+    staggerIn($("sweep-body"));
+    if (sweepChart) { sweepChart.destroy(); sweepChart = null; }
+    drawSweep(rs);
+  } catch (e) { $("sweep-error").textContent = e.message; $("sweep-body").innerHTML = `<tr><td colspan="4" class="empty">error: ${esc(e.message)}</td></tr>`; }
+  finally { btn.disabled = false; }
 }
+$("btn-run-sweep").onclick = runSweep;
+async function runAutoTune() {
+  $("sweep-error").textContent = "";
+  const btn = $("btn-auto-tune");
+  btn.disabled = true;
+  try {
+    const data = await api("/eval/auto-tune", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    $("tune-panel").hidden = false;
+    $("tune-best").textContent = data.best_threshold != null ? data.best_threshold.toFixed(2) : "–";
+    $("tune-f1").textContent = data.best_f1 != null ? data.best_f1.toFixed(4) : "–";
+    $("tune-body").innerHTML = (data.borderline ?? []).length ? data.borderline.map(b => `
+      <tr>
+        <td class="prompt-cell" title="${esc(b.prompt_a)}">${esc(b.prompt_a.length > 70 ? b.prompt_a.slice(0, 70) + "…" : b.prompt_a)}</td>
+        <td class="prompt-cell" title="${esc(b.prompt_b)}">${esc(b.prompt_b.length > 70 ? b.prompt_b.slice(0, 70) + "…" : b.prompt_b)}</td>
+        <td class="num">${b.similarity.toFixed(4)}</td>
+        <td><span class="badge ${b.should_match ? "expected-yes" : "expected-no"}">${b.should_match ? "should match" : "should not"}</span></td>
+      </tr>`).join("") : `<tr><td colspan="4" class="empty">No borderline pairs — the pick is uncontested on this grid.</td></tr>`;
+    staggerIn($("tune-body"));
+  } catch (e) { $("sweep-error").textContent = e.message; }
+  finally { btn.disabled = false; }
+}
+$("btn-auto-tune").onclick = runAutoTune;
 
 // ---------- logs ----------
 async function loadLogs() {
   try {
     const limit = $("log-limit").value;
+    const filter = $("log-filter").value;
     const data = await api(`/logs/recent?limit=${limit}`);
-    $("logs-body").innerHTML = data.logs.length ? data.logs.map(l => `
+    let logs = data.logs;
+    if (filter) logs = logs.filter(l => l.outcome === filter);
+    $("logs-body").innerHTML = logs.length ? logs.map(l => `
       <tr>
         <td class="num muted">${fmtTime(l.timestamp)}</td>
         <td><span class="badge ${esc(l.outcome)}">${esc(l.outcome)}</span></td>
@@ -342,13 +661,19 @@ async function loadLogs() {
         <td class="num">${l.latency_ms.toFixed(1)} ms</td>
         <td class="num">${l.tokens_in} / ${l.tokens_out}</td>
         <td class="num">$${l.estimated_cost_usd.toFixed(6)}</td>
-      </tr>`).join("") : `<tr><td colspan="7" class="empty">No requests logged yet.</td></tr>`;
+      </tr>`).join("") : `<tr><td colspan="7" class="empty"><b>No requests logged yet.</b><br>Send a chat completion to see rows here.</td></tr>`;
+    staggerIn($("logs-body"));
   } catch (e) { $("logs-body").innerHTML = `<tr><td colspan="7" class="empty">error: ${esc(e.message)}</td></tr>`; }
 }
+$("btn-refresh-logs").onclick = loadLogs;
+$("log-limit").onchange = loadLogs;
+$("log-filter").onchange = loadLogs;
 setInterval(() => { if ($("auto-logs").checked && activeTab === "logs") loadLogs(); }, 4000);
 
 // ---------- initial load ----------
+paintTheme();
 loadMetrics();
+loadTrend();
 </script>
 </body>
 </html>
