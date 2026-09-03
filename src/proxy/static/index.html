@@ -89,8 +89,6 @@
   }
   .mark b { display: block; font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
   .mark span { display: block; color: var(--muted); font-size: 11.5px; }
-  .navlabel { color: var(--muted); font-size: 11px; font-weight: 650; text-transform: uppercase;
-    letter-spacing: .07em; padding: 8px 10px 4px; }
   nav.side-nav { display: flex; flex-direction: column; gap: 2px; }
   nav.side-nav button {
     display: flex; align-items: center; gap: 10px; width: 100%;
@@ -129,32 +127,29 @@
   .tab.active { display: block; animation: tab-in 180ms var(--spring); }
   @keyframes tab-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-  /* ---------- hero + stats ---------- */
+  /* ---------- statement hero + ledger ---------- */
   .hero {
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-    box-shadow: var(--shadow); padding: 20px 24px; display: flex; align-items: baseline;
-    gap: 16px; flex-wrap: wrap;
+    box-shadow: var(--shadow); padding: 26px 28px 22px;
   }
-  .hero .big { font-size: 46px; font-weight: 800; letter-spacing: -.03em; color: var(--hero); line-height: 1; }
-  .hero .what { color: var(--muted); font-size: 13px; max-width: 46ch; }
+  .hero .big { font-size: 76px; font-weight: 800; letter-spacing: -.04em; color: var(--hero); line-height: 1; }
+  .hero .what { color: var(--muted); font-size: 14px; margin-top: 8px; max-width: 60ch; }
   .hero .what b { color: var(--ink); }
-  .stats { display: flex; flex-wrap: wrap; gap: 0; background: var(--surface);
-    border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow);
-    overflow: hidden; margin-top: 14px; }
-  .stat { padding: 14px 20px; min-width: 150px; flex: 1 1 0; border-left: 1px solid var(--border); }
-  .stat:first-child { border-left: 0; }
-  .stat .label { color: var(--muted); font-size: 12px; font-weight: 600; }
-  .stat .value { font-size: 24px; font-weight: 750; letter-spacing: -.02em; margin-top: 2px; }
-  .stat .cap { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .ledger { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow); margin-top: 14px; padding: 6px 22px; }
+  .lrow { display: flex; align-items: baseline; gap: 14px; padding: 11px 0;
+    border-bottom: 1px solid var(--border); }
+  .lrow:last-child { border-bottom: 0; }
+  .lrow .label { color: var(--muted); font-size: 13px; font-weight: 550; }
+  .lrow .value { margin-left: auto; font-size: 19px; font-weight: 700; letter-spacing: -.01em;
+    text-align: right; white-space: nowrap; }
+  .lrow .cap { color: var(--muted); font-size: 12px; text-align: right; min-width: 220px; }
 
   /* ---------- panels ---------- */
   .panel { background: var(--surface); border: 1px solid var(--border);
     border-radius: 12px; box-shadow: var(--shadow); padding: 16px 18px; margin-top: 14px; }
   .panel > .label { color: var(--muted); font-size: 12px; font-weight: 650; margin-bottom: 10px; }
   .panel .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-  .grid2 > .panel { margin-top: 0; }
-  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
   canvas { max-height: 240px; }
 
   .row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -213,9 +208,9 @@
     nav.side-nav button { width: auto; white-space: nowrap; }
     .navlabel, .side-foot .tuneline { display: none; }
     .side-foot { flex-direction: row; align-items: center; border-top: 0; padding: 8px 2px 0; }
-    .hero .big { font-size: 36px; }
-    .stat { min-width: 45%; border-left: 0; border-top: 1px solid var(--border); }
-    .stat:nth-child(-n+2) { border-top: 0; }
+    .hero .big { font-size: 52px; }
+    .lrow { flex-wrap: wrap; }
+    .lrow .cap { min-width: 0; text-align: left; margin-left: auto; }
   }
   @media (prefers-reduced-motion: reduce) {
     .tab.active { animation: none; }
@@ -230,7 +225,6 @@
       <span class="mark-box">SC</span>
       <div><b>Semantic Cache</b><span>proxy · ops console</span></div>
     </div>
-    <div class="navlabel">Observe</div>
     <nav class="side-nav" aria-label="Dashboard sections">
       <button data-tab="metrics" class="active">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 13.5h12"/><path d="M4 11V8M8 11V4.5M12 11V6.5"/></svg>
@@ -261,24 +255,22 @@
       <!-- ============ METRICS ============ -->
       <section id="tab-metrics" class="tab active" aria-label="Metrics">
         <div class="hero">
-          <div class="big num" id="m-tokens">–</div>
-          <div class="what"><b>tokens never generated again.</b> Every HIT below is an LLM call you didn't pay for — served from the notebook instead.</div>
+          <div class="big num" id="m-hitrate">–</div>
+          <div class="what"><b>of requests never touched the LLM.</b> <span id="m-hits-cap">–</span></div>
+          <div class="what" id="m-req-cap" style="margin-top:2px">–</div>
         </div>
-        <div class="stats" role="group" aria-label="Headline savings">
-          <div class="stat"><div class="label">Hit rate</div><div class="value num" id="m-hitrate">–</div><div class="cap" id="m-hits-cap">–</div></div>
-          <div class="stat"><div class="label">Speedup</div><div class="value num" id="m-speedup">–</div><div class="cap" id="m-lat-cap">–</div></div>
-          <div class="stat"><div class="label">Requests</div><div class="value num" id="m-total">–</div><div class="cap" id="m-req-cap">–</div></div>
-          <div class="stat"><div class="label">Est. cost saved</div><div class="value num" id="m-cost">–</div><div class="cap">gpt-3.5-turbo pricing; free models $0</div></div>
+        <div class="ledger" role="group" aria-label="Savings ledger">
+          <div class="lrow"><span class="label">Tokens never generated again</span><span class="value num" id="m-tokens">–</span></div>
+          <div class="lrow"><span class="label">Speedup, HIT vs MISS</span><span class="value num" id="m-speedup">–</span><span class="cap" id="m-lat-cap">–</span></div>
+          <div class="lrow"><span class="label">Requests served</span><span class="value num" id="m-total">–</span></div>
+          <div class="lrow"><span class="label">Est. cost saved</span><span class="value num" id="m-cost">–</span><span class="cap">gpt-3.5-turbo pricing; free models $0</span></div>
         </div>
         <div class="row" style="margin-top:14px">
           <button class="primary" id="btn-refresh-metrics">Refresh now</button>
           <label class="toggle"><input type="checkbox" id="auto-metrics" checked> auto-refresh every 5 s</label>
           <span id="metrics-updated" class="muted" style="font-size:12px"></span>
         </div>
-        <div class="grid2">
-          <div class="panel"><div class="label">Request mix over time (recent log)</div><canvas id="chart-trend"></canvas><div class="hint" id="trend-hint"></div></div>
-          <div class="panel"><div class="label">Hit / miss split (lifetime)</div><canvas id="chart-split"></canvas></div>
-        </div>
+        <div class="panel"><div class="label">Request mix over time (recent log)</div><canvas id="chart-trend" style="max-height:280px"></canvas><div class="hint" id="trend-hint"></div></div>
         <div class="panel">
           <div class="label">Per-user savings</div>
           <table>
@@ -512,18 +504,11 @@ if (urlTab) {
 }
 
 // ---------- charts (rebuilt on theme change from cached payloads) ----------
-let splitChart = null, trendChart = null, sweepChart = null;
-let lastMetrics = null, lastTrend = null, lastSweep = null;
+let trendChart = null, sweepChart = null;
+let lastTrend = null, lastSweep = null;
 function rebuildCharts() {
-  if (splitChart && lastMetrics) { splitChart.destroy(); splitChart = null; drawSplit(lastMetrics); }
   if (trendChart && lastTrend) { trendChart.destroy(); trendChart = null; drawTrend(lastTrend); }
   if (sweepChart && lastSweep) { sweepChart.destroy(); sweepChart = null; drawSweep(lastSweep); }
-}
-function drawSplit(m) {
-  const p = palette();
-  const hits = Math.round(m.total_requests * m.hit_rate);
-  const data = { labels: ["HIT", "MISS"], datasets: [{ data: [hits, m.total_requests - hits], backgroundColor: [p.hit, p.miss], borderWidth: 0 }] };
-  splitChart = new Chart($("chart-split"), { type: "doughnut", data: data, options: { plugins: { legend: { labels: { color: p.muted } } } } });
 }
 function drawTrend(t) {
   const p = palette();
@@ -538,7 +523,7 @@ function drawTrend(t) {
   trendChart = new Chart($("chart-trend"), {
     type: "bar", data: data,
     options: { plugins: { legend: { labels: { color: p.muted, boxWidth: 12 } } },
-      scales: { x: { stacked: true, ticks: { color: p.muted, maxTicksLimit: 8 }, grid: { display: false } },
+      scales: { x: { stacked: true, ticks: { color: p.muted, maxTicksLimit: 6 }, grid: { display: false } },
                 y: { stacked: true, ticks: { color: p.muted, precision: 0 }, grid: { color: p.grid } } } },
   });
 }
@@ -562,7 +547,6 @@ function drawSweep(rs) {
 async function loadMetrics() {
   try {
     const m = await api("/metrics");
-    lastMetrics = m;
     setDot(true);
     const tokens = m.total_tokens_saved ?? 0;
     const hits = Math.round(m.total_requests * m.hit_rate);
@@ -593,9 +577,6 @@ async function loadMetrics() {
       </tr>`).join("")
       : `<tr><td colspan="5" class="empty"><b>No requests logged yet.</b><br>POST a prompt twice to see MISS → HIT here.</td></tr>`;
     $("metrics-updated").textContent = "updated " + new Date().toLocaleTimeString();
-
-    if (splitChart) { splitChart.destroy(); splitChart = null; }
-    drawSplit(m);
   } catch (e) { setDot(false); $("live-text").textContent = "unreachable"; $("metrics-updated").textContent = "error: " + e.message; }
 }
 $("btn-refresh-metrics").onclick = () => { loadMetrics(); loadTrend(); };
