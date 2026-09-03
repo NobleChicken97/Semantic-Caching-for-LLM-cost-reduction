@@ -84,7 +84,7 @@ The two lost directories are restored, the working tree is verified end-to-end (
   - [x] Q2 live-monitor retargeted Lightsail (Render 503s; read-only checks — 401 probe inapplicable in MOCK mode)
   - [x] Q3 plan.md live/persistence sections + progress.md session entry
   - [x] Q4 `scripts/Test-SemCache.ps1` (15 checks: exact/paraphrase/boundary/model-isolation/bypass/auth/validation/metrics/logs/TTL) — syntax-checked, awaiting owner run
-  - [ ] Q5 Commit + push (CI validates) → close
+  - [x] Q5 Commit + push (CI validates) → close
 
 - [ ] **🟠 P1** **Custom domain `semcache.noblechicken.me` (Namecheap → Lightsail → Caddy auto-HTTPS).** Tracked sub-todos:
   - [x] D1 Namecheap A record `semcache` → `98.95.205.92` (owner done; verified propagating via recursive + direct lookup)
