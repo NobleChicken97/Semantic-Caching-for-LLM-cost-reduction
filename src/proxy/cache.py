@@ -18,7 +18,7 @@ import numpy as np
 
 from .config import get_settings
 from .database import get_connection
-from .text import entities, fact_types, jaccard, strip_tags
+from .text import content_words, entities, fact_types, jaccard, strip_tags
 
 logger = logging.getLogger("proxy")
 
@@ -243,6 +243,15 @@ def _semantic_lookup(
         best_prompt = None
 
         for row in rows:
+            # Degenerate candidates (no content words: ":)", "!!!", ...) are
+            # skipped: short/low-signal prompts collapse onto them because
+            # shared boilerplate dominates their vectors (measured: unrelated
+            # prompts scoring 0.88-0.94 against a ":)" entry). Exact-tier
+            # repeats still hit — only the semantic tier ignores them. All
+            # labeled cache entries carry >=1 content word, so recall cost
+            # is zero by construction (verified in tests/test_trust.py).
+            if not content_words(strip_tags(row["prompt_text"] or "")):
+                continue
             try:
                 stored_vec = _deserialize_embedding(row["prompt_embedding"])
             except (ValueError, TypeError):

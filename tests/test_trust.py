@@ -15,6 +15,32 @@ from httpx import ASGITransport, AsyncClient
 os.environ["MOCK_LLM"] = "true"
 
 
+@pytest.fixture(autouse=True)
+def isolated_db(monkeypatch, tmp_path):
+    """Tmp database for direct store()/lookup() tests (mirrors test_cache.py).
+
+    Route tests bring their own `client` fixture which re-points the path
+    again — harmless layering, same isolation guarantee.
+    """
+    import tempfile
+
+    from proxy.config import get_settings
+    from proxy.database import init_db, seed_test_pairs
+
+    fd, path = tempfile.mkstemp(suffix=".db", prefix="test_trust_")
+    os.close(fd)
+    monkeypatch.setenv("CACHE_DB_PATH", path)
+    get_settings.cache_clear()
+    init_db()
+    seed_test_pairs()
+    yield
+    get_settings.cache_clear()
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def _france(model="gpt-3.5-turbo"):
     return {
         "model": model,
@@ -168,6 +194,40 @@ class TestEntityVeto:
 
         assert not entity_veto("what is the capital of france?", "WHAT IS IT?")
 
+    def test_degenerate_candidate_skipped(self):
+        """A cached entry with no content words (":)") must never win a
+        semantic lookup, however short the query is (measured: unrelated
+        prompts scoring 0.88-0.94 against such an entry)."""
+        from proxy.cache import lookup, store
+
+        store("[user]:)", {"ok": True}, "gpt-3.5-turbo")
+        assert lookup("[user]hello world") is None
+        assert lookup("[user]aaaaaaaaaaaaaaaaaaaa") is None
+
+    def test_degenerate_candidate_exact_repeat_still_hits(self):
+        from proxy.cache import lookup, store
+
+        store("[user]:)", {"ok": True}, "gpt-3.5-turbo")
+        hit = lookup("[user]:)")
+        assert hit is not None
+        assert hit["similarity_score"] == 1.0
+
+    def test_labeled_entries_all_have_content_words(self):
+        """Recall-safety proof for the degenerate skip: no labeled cache
+        entry (pair-A side) is content-free, so the rule cannot veto one."""
+        import json
+        from pathlib import Path
+
+        from proxy.text import content_words, strip_tags
+
+        pairs = json.loads(
+            Path("data/labeled_test_pairs.json").read_text(encoding="utf-8")
+        )["pairs"]
+        bare = [
+            p["pair_id"] for p in pairs if not content_words(strip_tags(p["prompt_a"]))
+        ]
+        assert bare == []
+
 
 class TestTrustThroughRoute:
     @pytest.mark.asyncio
@@ -279,8 +339,6 @@ class TestTrustThroughRoute:
 
 class TestPurgeAudit:
     def test_purge_writes_audit_row(self, monkeypatch, tmp_path):
-        import sqlite3
-
         from proxy.cache import last_purge, purge, store
         from proxy.config import get_settings
         from proxy.database import init_db

@@ -17,11 +17,12 @@
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\Test-SemCache-Deep2.ps1
 #>
-param([string]$Base = "https://semcache.noblechicken.me")
+param([string]$Base = "https://semcache.noblechicken.me", [string]$AdminToken = "")
 
 $ErrorActionPreference = "Stop"
 $script:pass = 0
 $script:fail = 0
+$script:lastCode = $null
 $R = Get-Date -Format "HHmmss"
 $G = @{
     fr = "v$R-fr"; de = "v$R-de"; neg = "v$R-ng"; num = "v$R-nu";
@@ -35,29 +36,61 @@ function AskFull([string]$prompt, [string]$model = "gpt-3.5-turbo", [hashtable]$
     $b = @{ model = $model; messages = $msg }
     if ($extra -ne $null) { foreach ($k in $extra.Keys) { $b[$k] = $extra[$k] } }
     $body = $b | ConvertTo-Json -Depth 5 -Compress
-    try {
-        $r = Invoke-RestMethod -Method Post -Uri "$Base/v1/chat/completions" `
-            -ContentType "application/json" -Body $body
-        return @{ ok = $true; meta = $r.cache_metadata; code = 200 }
-    } catch {
-        return @{ ok = $false; meta = $null; code = [int]$_.Exception.Response.StatusCode }
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        try {
+            $r = Invoke-RestMethod -Method Post -Uri "$Base/v1/chat/completions" `
+                -ContentType "application/json" -Body $body
+            $script:lastCode = 200
+            return @{ ok = $true; meta = $r.cache_metadata; code = 200 }
+        } catch {
+            $resp = $_.Exception.Response
+            # Transport failure (no HTTP response at all: DNS/TLS/reset) is
+            # retried ONCE after 3 s. Real HTTP errors (4xx/5xx) never retry:
+            # retrying those would hammer the server and mask product bugs.
+            if ($resp -eq $null -and $attempt -eq 0) {
+                Start-Sleep -Seconds 3
+                continue
+            }
+            $script:lastCode = $(if ($resp -ne $null) { [int]$resp.StatusCode } else { 0 })
+            return @{ ok = $false; meta = $null; code = $script:lastCode }
+        }
     }
+    return @{ ok = $false; meta = $null; code = 0 }
 }
 
-function Ask([string]$prompt) { return (AskFull $prompt).meta }
+function Ask([string]$prompt) { return AskFull $prompt }
 
 function Check([string]$name, $actual, $expected) {
     if ("$actual" -eq "$expected") {
         Write-Host "PASS  $name  [$actual]" -ForegroundColor Green
         $script:pass++
     } else {
-        Write-Host "FAIL  $name  expected=$expected actual=$actual" -ForegroundColor Red
+        $detail = ""
+        if ("$actual" -eq "" -and $script:lastCode -ne $null) { $detail = " (http=$($script:lastCode), 0=transport failure)" }
+        Write-Host "FAIL  $name  expected=$expected actual=$actual$detail" -ForegroundColor Red
         $script:fail++
     }
 }
 
 function Observe([string]$name, $value) {
     Write-Host "INFO  $name  [$value]" -ForegroundColor Yellow
+}
+
+# Clean room: templates persist across runs, so a rerun WITHOUT a purge
+# compares against last run's entries (same template, new suffix ~= 0.93)
+# and every "fresh" assert spuriously HITs. Purge when a token is given;
+# otherwise this run is only valid on an empty cache.
+if ($AdminToken -ne "") {
+    try {
+        $pr = Invoke-RestMethod -Method Post -Uri "$Base/cache/purge" `
+            -Headers @{ Authorization = "Bearer $AdminToken"; "Content-Type" = "application/json" } `
+            -Body '{}'
+        Write-Host "clean room: purged $($pr.purged_count) stale entries"
+    } catch {
+        Write-Host "WARN  start-purge failed, continuing on dirty cache" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "WARN  no -AdminToken: no clean-room purge; first-run results only" -ForegroundColor Yellow
 }
 
 Write-Host "== A multilingual (bge-small is English-centric: exact must HIT, paraphrase observed) =="
@@ -88,9 +121,9 @@ $r = Ask "The meeting is on Tuesday ($($G.num))."
 Observe "C weekday swap" "$($r.meta.outcome) sim=$($r.meta.similarity_score)"
 
 Write-Host "== D code pairs =="
-Check "D py-add MISS" (Ask "def add(a, b): return a + b ($($G.code))").meta.outcome "MISS"
-Check "D py-mul MISS (labeled analog)" (Ask "def multiply(a, b): return a * b ($($G.code))").meta.outcome "MISS"
-$r = Ask "function add(a,b){return a+b} ($($G.code))"
+Check "D py-add MISS" (Ask "def add(a, b): return a + b ($($G.code)-1)").meta.outcome "MISS"
+Check "D py-mul MISS (labeled analog)" (Ask "def multiply(a, b): return a * b ($($G.code)-2)").meta.outcome "MISS"
+$r = Ask "function add(a,b){return a+b} ($($G.code)-3)"
 Observe "D js-same-task" "$($r.meta.outcome) sim=$($r.meta.similarity_score)"
 
 Write-Host "== E hostile text (must store + serve exactly; display escaping is dashboard-side) =="
@@ -105,7 +138,7 @@ Write-Host "== F emoji / whitespace / unicode / case =="
 Check "F emoji MISS" (Ask "Good luck launch day ($($G.emo))!").meta.outcome "MISS"
 Check "F emoji repeat HIT" (Ask "Good luck launch day ($($G.emo))!").meta.outcome "HIT"
 $er = Ask ":) ($($G.emo))"
-Observe "F lone-emoji" $er.meta.outcome
+Observe "F lone-emoji" "$($er.code) $($er.meta.outcome)"
 Check "F padded lower HIT" (Ask "   hello   world ($($G.ws))   ").meta.outcome "MISS"
 Check "F padded upper HIT" (Ask "  HELLO   WORLD ($($G.ws))  ").meta.outcome "HIT"
 Check "F accent MISS" (Ask "I love cafés in Paris ($($G.uni)).").meta.outcome "MISS"
@@ -147,6 +180,7 @@ Write-Host "== J concurrency: 5 parallel identical fresh prompts, exactly one MI
 $jp = "Concurrency probe ($($G.conc))."
 $jb = @{ model = "gpt-3.5-turbo"; messages = @(@{ role = "user"; content = $jp }) } |
     ConvertTo-Json -Depth 5 -Compress
+Add-Type -AssemblyName System.Net.Http  # WinPS does not preload it (type-not-found otherwise)
 $hc = New-Object System.Net.Http.HttpClient
 $hc.Timeout = [timespan]::FromSeconds(60)
 $tasks = @()
@@ -154,9 +188,14 @@ for ($i = 0; $i -lt 5; $i++) {
     $sc = New-Object System.Net.Http.StringContent($jb, [Text.Encoding]::UTF8, "application/json")
     $tasks += $hc.PostAsync("$Base/v1/chat/completions", $sc)
 }
-[void][System.Threading.Tasks.Task]::WaitAll($tasks)
-$outs = $tasks | ForEach-Object {
-    (ConvertFrom-Json $_.Result.Content.ReadAsStringAsync().Result).cache_metadata.outcome
+try {
+    [void][System.Threading.Tasks.Task]::WaitAll($tasks)
+    $outs = $tasks | ForEach-Object {
+        (ConvertFrom-Json $_.Result.Content.ReadAsStringAsync().Result).cache_metadata.outcome
+    }
+} catch {
+    $outs = @("TRANSPORT-FAULT")
+    Observe "J transport fault (infra, not product)" $_.Exception.Message
 }
 $hc.Dispose()
 $missCt = ($outs | Where-Object { $_ -eq "MISS" }).Count
@@ -172,19 +211,28 @@ $topics = @(
     "chess openings", "fermentation", "the Gold Rush", "knot tying",
     "volcano types", "night trains in Europe"
 )
-$lats = @()
+$recs = @()
 $missAll = $true
 for ($i = 0; $i -lt 20; $i++) {
+    # Per-prompt suffix: a shared family suffix would gift every pair shared
+    # tokens and inflate same-template similarities (lesson from v1 T3).
     $t0 = Get-Date
-    $r = Ask "Write two sentences about $($topics[$i]) ($($G.burst))."
-    $lats += ((Get-Date) - $t0).TotalMilliseconds
+    $r = Ask "Write two sentences about $($topics[$i]) ($($G.burst)-$i)."
+    $ms = ((Get-Date) - $t0).TotalMilliseconds
+    $recs += [pscustomobject]@{ topic = $topics[$i]; ms = $ms; out = $r.meta.outcome }
     if ($r.meta.outcome -ne "MISS") { $missAll = $false }
 }
 Check "K all 20 distinct MISS" $missAll "True"
+$lats = $recs | ForEach-Object { $_.ms }
+$hits = $recs | Where-Object { $_.out -ne "MISS" } | ForEach-Object { "$($_.topic)=$($_.out)" }
+if ($hits.Count -gt 0) { Observe "K non-MISS topics" ($hits -join " | ") }
 $srt = $lats | Sort-Object
 $avg = [math]::Round(($lats | Measure-Object -Average).Average, 1)
 $p95 = [math]::Round($srt[[math]::Min(19, [int](0.95 * 20))], 1)
 Observe "K MISS latency avg/p95 ms (O(n) scan evidence)" "$avg / $p95"
+$slow = $recs | Sort-Object ms -Descending | Select-Object -First 3 |
+    ForEach-Object { "$([math]::Round($_.ms))ms $($_.topic) [$($_.out)]" }
+Observe "K 3 slowest" ($slow -join " | ")
 
 Write-Host "== L reversed words (observe: order sensitivity) =="
 Check "L base MISS" (Ask "Dog bites man ($($G.rev)).").meta.outcome "MISS"
