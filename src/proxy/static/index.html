@@ -515,9 +515,9 @@ function drawTrend(t) {
   const data = {
     labels: t.labels,
     datasets: [
-      { label: "HIT", data: t.hits, backgroundColor: p.hit, borderRadius: 3 },
-      { label: "MISS", data: t.misses, backgroundColor: p.miss, borderRadius: 3 },
-      { label: "other", data: t.other, backgroundColor: p.flat, borderRadius: 3 },
+      { label: "HIT", data: t.hits, backgroundColor: p.hit, borderRadius: 3, maxBarThickness: 54 },
+      { label: "MISS", data: t.misses, backgroundColor: p.miss, borderRadius: 3, maxBarThickness: 54 },
+      { label: "other", data: t.other, backgroundColor: p.flat, borderRadius: 3, maxBarThickness: 54 },
     ],
   };
   trendChart = new Chart($("chart-trend"), {
