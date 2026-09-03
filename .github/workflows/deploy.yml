@@ -1,0 +1,85 @@
+# CD: push to ECR, then tell Lightsail to pull it.
+#
+# Flow:  push to main -> CI (lint/test/docker-smoke) must go green ->
+#        this workflow builds the production image, pushes it to ECR
+#        (tags: latest + commit SHA), then SSHes into the Lightsail host
+#        which pulls and restarts (scripts/deploy-lightsail.sh).
+#
+# Required GitHub secrets (repo Settings -> Secrets and variables -> Actions):
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+#       IAM creds with AmazonEC2ContainerRegistryPowerUser (push). A dedicated
+#       `semcache-ci` user is recommended over a personal admin key.
+#   LIGHTSAIL_HOST        static IP or DNS of the Lightsail instance
+#   LIGHTSAIL_USER        usually `ubuntu`
+#   LIGHTSAIL_SSH_KEY     private key matching a Lightsail keypair authorized
+#                         on the instance (see scripts/lightsail-provision.sh)
+#
+# The host keeps runtime secrets (ADMIN_TOKEN, USER_ID_PEPPER, MOCK_LLM) in
+# /srv/semcache/app/.env — they are NEVER in git or in this workflow.
+
+name: Deploy to Lightsail
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_URI: 522412052856.dkr.ecr.us-east-1.amazonaws.com/semantic-cache-proxy
+
+jobs:
+  build-push:
+    # Manual runs always proceed; automatic runs only when CI went green.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    name: Build + push to ECR
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # For workflow_run triggers the default checkout would be the
+          # default branch tip; pin to the exact SHA CI validated.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.ECR_URI }}:latest
+            ${{ env.ECR_URI }}:${{ github.event.workflow_run.head_sha || github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Pull + restart on Lightsail
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build-push]
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.LIGHTSAIL_HOST }}
+          username: ${{ secrets.LIGHTSAIL_USER }}
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          script: bash /srv/semcache/app/scripts/deploy-lightsail.sh

@@ -1,0 +1,49 @@
+services:
+  app:
+    # Release image built by .github/workflows/deploy.yml and pushed to ECR.
+    # `docker compose pull` refreshes it on the Lightsail host; `build: .`
+    # stays as a fallback so the very first provision can build locally
+    # without any registry credentials.
+    image: ${ECR_URI:-522412052856.dkr.ecr.us-east-1.amazonaws.com/semantic-cache-proxy}:latest
+    build: .
+    # Secrets live in /srv/semcache/app/.env on the host (created once by
+    # scripts/lightsail-provision.sh, NEVER committed). Compose `environment`
+    # wins over env_file, so persistence cannot be misconfigured away.
+    env_file:
+      - .env
+    environment:
+      CACHE_DB_PATH: /var/data/cache.db
+    volumes:
+      # Named volume = host SSD (Lightsail Small 60GB). Survives
+      # `compose down`, container rebuilds, and host reboots.
+      - cache-data:/var/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  cache-data:
+  caddy-data:
+  caddy-config:

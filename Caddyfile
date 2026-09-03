@@ -1,0 +1,17 @@
+# Caddy reverse proxy for the Lightsail host.
+#
+# DOMAIN is set in /srv/semcache/app/.env:
+#   - Pre-DNS stage: leave DOMAIN unset (or DOMAIN=localhost). The :80 block
+#     below serves the static IP over plain HTTP. Caddy will log a harmless
+#     background cert error for the empty/localhost site; :80 keeps working.
+#   - Post-DNS stage: set DOMAIN=semcache.noblechicken.me,
+#     `docker compose up -d caddy`, and this same file provisions Let's
+#     Encrypt certs automatically (no cert commands, no renewals to manage).
+
+:80 {
+	reverse_proxy app:8000
+}
+
+{$DOMAIN} {
+	reverse_proxy app:8000
+}
