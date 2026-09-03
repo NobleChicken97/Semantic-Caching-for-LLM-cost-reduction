@@ -178,6 +178,9 @@
   }
   .tip.on { display: block; }
   .tbar { cursor: pointer; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; font-size: 12px;
+    color: var(--card-muted, var(--muted)); }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 7px; }
   .sweep-readout { font-size: 12.5px; color: var(--muted); margin-top: 8px; min-height: 18px; }
   .sweep-readout b { color: var(--ink); }
 
@@ -379,7 +382,9 @@
             <tbody id="tune-body"></tbody>
           </table>
         </div>
-        <div class="bento card-peri"><div class="kicker">Precision / recall / F1 by threshold</div><div class="viz" id="sweep-wrap"><div id="chart-sweep"></div></div><div class="sweep-readout" id="sweep-hover">Hover the curve to inspect a threshold.</div></div>
+        <div class="bento card-peri"><div class="kicker">Precision / recall / F1 by threshold</div><div class="viz" id="sweep-wrap"><div id="chart-sweep"></div></div>
+          <div class="legend" aria-hidden="true"><span><i style="background:#e8e4da"></i>precision</span><span><i style="background:#f2664d"></i>recall</span><span><i style="background:#e8a13d"></i>F1</span></div>
+          <div class="sweep-readout" id="sweep-hover">Hover the curve to inspect a threshold.</div></div>
         <div class="panel">
           <table>
             <thead><tr><th scope="col">Threshold</th><th scope="col">Precision</th><th scope="col">Recall</th><th scope="col">F1</th></tr></thead>
@@ -572,6 +577,7 @@ function activateTab(name) {
   $("tab-" + name).classList.add("active");
   $("section-title").textContent = TITLES[name] || name;
   activeTab = name;
+  api("/health").then(() => setDot(true)).catch(() => setDot(false));  // sidebar dot stays honest on deep-links too
   if (activeTab === "overview") loadOverview();
   if (activeTab === "cache") loadCache();
   if (activeTab === "logs") loadLogs();
@@ -694,10 +700,6 @@ function drawSweep(rs) {
   });
   s += `<circle id="sweep-ring" r="7" fill="none" stroke="${p.ink}" stroke-width="1.5" visibility="hidden"/>`;
   const names = { precision: "P", recall: "R", F1: "F1" };
-  s += `<g font-size="11" fill="${p.muted}">` +
-    `<circle cx="${ML}" cy="2" r="3.5" fill="${p.c1}"/><text x="${ML + 10}" y="6">precision</text>` +
-    `<circle cx="${ML + 82}" cy="2" r="3.5" fill="${p.hit}"/><text x="${ML + 92}" y="6">recall</text>` +
-    `<circle cx="${ML + 150}" cy="2" r="3.5" fill="${p.c3}"/><text x="${ML + 160}" y="6">F1</text></g>`;
   box.innerHTML = s + "</svg>";
   const ring = box.querySelector("#sweep-ring"), out = $("sweep-hover");
   const show = i => {
@@ -838,7 +840,7 @@ async function loadCache() {
         <td class="prompt-cell" title="${esc(e.prompt_text)}">${esc(e.prompt_text.length > 90 ? e.prompt_text.slice(0, 90) + "…" : e.prompt_text)}</td>
         <td>${esc(e.model_used)}</td>
         <td class="num" title="${new Date(e.created_at * 1000).toLocaleString()}">${fmtAgo(e.created_at)}</td>
-        <td class="num" title="${new Date(e.expires_at * 1000).toLocaleString()}">${expired ? "<span class='muted'>expired</span>" : fmtAgo(e.expires_at)}<span class="ttl"><i style="width:${ttlPct.toFixed(0)}%"></i></span></td>
+        <td class="num" title="${new Date(e.expires_at * 1000).toLocaleString()}">${expired ? "<span class='muted'>expired</span>" : fmtAgo(e.expires_at) + `<span class="ttl"><i style="width:${ttlPct.toFixed(0)}%"></i></span>`}</td>
         <td class="num">${e.hit_count}</td>
         <td class="num">${fmtAgo(e.last_hit_at)}</td>
         <td><button class="danger" data-purge="${e.entry_id}">Purge</button></td>
