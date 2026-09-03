@@ -44,6 +44,13 @@ $script:fail = 0
 $script:trade = 0
 $RunId = Get-Date -Format "HHmmss"
 $F = @{ s1 = "x$RunId-a"; s2 = "x$RunId-b"; s3 = "x$RunId-c"; s4 = "x$RunId-d" }
+# Session suffix map: pairs that SHOULD match share a suffix (isolates the
+# linguistic difference); unrelated prompts get distinct suffixes so shared
+# tokens cannot inflate cross-similarity (same artifact class as v1 T3).
+# #11 repeats #3 exactly (suffix B) to prove memory across the session.
+$SS = @{ m1 = "s$RunId-a"; m2 = "s$RunId-a"; p1 = "s$RunId-b"; p2 = "s$RunId-b";
+         u1 = "s$RunId-c"; e1 = "s$RunId-d"; e2 = "s$RunId-d"; e3 = "s$RunId-d";
+         w1 = "s$RunId-e"; w2 = "s$RunId-e"; th = "s$RunId-f" }
 
 function Headers([bool]$json = $false) {
     $h = @{}
@@ -168,20 +175,19 @@ Observe "SPOT tricky (same author, other play)" (Ask "Who wrote Macbeth ($($F.s2
 Write-Host ""
 Write-Host "===== PHASE C: mixed real-life session ====="
 if ($AdminToken -ne "") { [void](PurgeAll) }
-$FS = $F.s1
 $session = @(
-    @{ q = "Good morning ($FS)."; e = "MISS" },
-    @{ q = "Good morning! ($FS)"; e = "HIT" },
-    @{ q = "How do I reset my password ($FS)?"; e = "MISS" },
-    @{ q = "I forgot my password, how can I reset it ($FS)?"; e = "HIT" },
-    @{ q = "How do I change my username ($FS)?"; e = "MISS" },
-    @{ q = "Explain photosynthesis ($FS)."; e = "MISS" },
-    @{ q = "Explain photosynthesis ($FS) in one sentence."; e = "HIT" },
-    @{ q = "Explain photosyntesis ($FS)."; e = "HIT" },
-    @{ q = "Who won the 2022 World Cup ($FS)?"; e = "MISS" },
-    @{ q = "Who won the last World Cup ($FS)?"; e = $null },
-    @{ q = "How do I reset my password ($FS)?"; e = "HIT" },
-    @{ q = "Thanks, that is all ($FS)!"; e = "MISS" }
+    @{ q = "Good morning ($($SS.m1))."; e = "MISS" },
+    @{ q = "Good morning! ($($SS.m2))"; e = "HIT" },
+    @{ q = "How do I reset my password ($($SS.p1))?"; e = "MISS" },
+    @{ q = "I forgot my password, how can I reset it ($($SS.p2))?"; e = "HIT" },
+    @{ q = "How do I change my username ($($SS.u1))?"; e = "MISS" },
+    @{ q = "Explain photosynthesis ($($SS.e1))."; e = "MISS" },
+    @{ q = "Explain photosynthesis ($($SS.e2)) in one sentence."; e = "HIT" },
+    @{ q = "Explain photosyntesis ($($SS.e3))."; e = "HIT" },
+    @{ q = "Who won the 2022 World Cup ($($SS.w1))?"; e = "MISS" },
+    @{ q = "Who won the last World Cup ($($SS.w2))?"; e = $null },
+    @{ q = "How do I reset my password ($($SS.p1))?"; e = "HIT" },
+    @{ q = "Thanks, that is all ($($SS.th))!"; e = "MISS" }
 )
 $sp = 0; $sf = 0
 foreach ($s in $session) {
@@ -221,7 +227,7 @@ Check "D logs mirror traffic" (($logs.Count -gt 0) -and ($logs[0].latency_ms -gt
 $e = (Invoke-RestMethod "$Base/cache/entries?q=deep-sea").entries | Select-Object -First 1
 if ($null -ne $e) { Check "D TTL honest" ($e.expires_at -gt $e.created_at) "True" }
 Observe "D empty prompt" (Ask "").meta.outcome
-Observe "D curly-quote prompt" (Ask "What is the capital of `“France`” ($($F.s4))?").meta.outcome
+Observe "D quoted prompt" (Ask "What is the capital of 'France' ($($F.s4))?").meta.outcome
 
 Write-Host ""
 Write-Host "STRICT: $($script:pass) passed, $($script:fail) failed, $($script:trade) documented-tradeoff" -ForegroundColor $(if ($script:fail -eq 0) { "Green" } else { "Red" })
