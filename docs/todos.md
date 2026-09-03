@@ -1,6 +1,6 @@
 # TODO — Semantic Caching Layer for LLM Cost Reduction
 
-> **Last updated:** 2026-09-01 (session 6 — tiktoken shipped, dev floors bumped, Dependabot PRs superseded, 22/22 smoke pass)
+> **Last updated:** 2026-09-04 (dashboard redesign shaped — brief pending confirmation; see P2 entry)
 > **Status legend:** 🔴 = known bug · 🟡 = planned enhancement · 🟢 = nice-to-have / stretch · ✅ = done
 > **Priority:** 🔴 P0 (blocks demo) · 🟠 P1 (blocks live deploy / key stories) · 🟡 P2 (polish) · 🟢 P3 (whenever)
 
@@ -40,6 +40,49 @@ The two lost directories are restored, the working tree is verified end-to-end (
 - [x] **🟡 P2** Seed-data ↔ JSON sync — **resolved by drift guard (2026-09-01 session 5/6), not by JSON-seeding.** Decision: `seed_test_pairs()` stays the source of truth (no init-order/migration risk), and `test_seed_matches_published_json_dataset` fails the suite if the exported `data/labeled_test_pairs.json` ever drifts (fix = re-run `scripts/export_test_pairs.py`). This delivers the item's actual goal (a fresh DB always matches the canonical published set) without touching migration ordering.
 - [x] **🟡 P2** Documented the `MAX_SEMANTIC_SCAN_ENTRIES` warning in a README **Troubleshooting** section (2026-09-01 session 4): what it means, that it's warn-only, and the two responses (shrink the scan / plan the ANN swap).
 - [x] **🟡 P2** Added a "What's new" pointer to `docs/progress.md` at the top of the README (2026-09-01 session 4).
+
+- [x] **🟡 P2** **Dashboard redesign — SHIPPED & LIVE (`de834f5`, 2026-09-04).** Single-file (`src/proxy/static/index.html`) visual + insights overhaul, no backend changes. Tracked sub-todos:
+  - [x] T1 Confirm brief (auto light/dark, anime.js v4 ESM, auto-tune evidence + trend/speedup panels)
+  - [x] T2 Motion codex searched (no match — anime.js path per skill); anime.js 4.5.0 ESM bundle verified (`dist/bundles/anime.esm.min.js`); graceful-degradation design (content correct even if CDN fails)
+  - [x] T3 Rewrite landed: theme tokens + toggle, headline strip with speedup, trend chart, auto-tune panel, skeletons/empty/error states, count-ups + row stagger, `prefers-reduced-motion`
+  - [x] T4 Verified: JS syntax OK, contracts OK, 11/11 dashboard tests OK, ruff OK, CI green → auto-deployed
+  - [x] T5 Live check: host on `de834f5`, `/health` ok, all new markers present in served page (`scripts/verify-dashboard.sh`)
+
+- [x] **🟡 P2** **Dashboard re-skin (Watermelon lane) — SHIPPED & LIVE (`97ab0ac`, 2026-09-04).** Sidebar shell, Inter Variable, OKLCH lime primary, amber chart ramp, dark-first. Tracked sub-todos:
+  - [x] R1 Ground tokens (real `index.css`, no invented style)
+  - [x] R2 Confirm brief (sidebar, dark-first, committed hero)
+  - [x] R3 Implement (all Phase-8 insights/motion/states kept)
+  - [x] R4 Verified: syntax/contracts/11-11 tests/ruff/contrast OK, CI green → auto-deployed; live markers confirmed (`scripts/verify-dashboard.sh`)
+
+- [ ] **🟡 P2** **Dashboard round 3 — owner verdict 2026-09-04: still reads AI-made, full rethink.** New rule: look before shipping. Tracked sub-todos:
+  - [x] V1 Screenshot the live dashboard as-is (done 2026-09-04 — first visual verification; critique recorded in chat: identical stat boxes, Chart.js-default doughnut, "OBSERVE" kicker, cramped trend labels)
+  - [ ] V2 Collect named anchors: screenshot 2–3 reference consoles the owner confirms (no more invented taste)
+  - [x] V3 Re-brief from evidence (statement + ledger, lime kept) → shipped `60d5abc` + bar-thickness polish `ca1b972` → live screenshot-verified (statement hero, ledger rows, full-width trend, no kicker/grid/doughnut)
+
+- [ ] **🟡 P2** **Dashboard round 4 (bento lane) — owner supplied reference 2026-09-04: neo-brutalist pastel bento (dark shell, saturated cards, condensed uppercase type, pill controls, textured viz).** Tracked sub-todos:
+  - [x] W1 Analyze reference (palette/type/radius/texture/composition) + map to our 4 tabs and data
+  - [ ] W2 Confirm plan (structure, fonts, palette handling) via questions
+  - [x] W3 Implement (shipped `652942e`) → verified (syntax, contracts, 11/11 tests, ruff, 12/12 contrast pairs) → CI green → auto-deployed → live screenshot-verified (coral hero, gauge, alert strip, ledger, trend bars confirmed rendering, per-user table)
+
+- [ ] **🟡 P2** **Dashboard round 5 (custom viz) — owner verdict: Chart.js defaults are the remaining AI tell; reference draws every graphic by hand.** Tracked sub-todos:
+  - [x] X1 Root-cause analysis (default-library rendering; texture/ornament gap; hero nesting pattern)
+  - [ ] X2 Confirm scope via question
+  - [x] X3 Custom SVG trend bars (rounded, dotted texture, tooltip chip, bucket dots) + custom SVG sweep lines (dots, best marker, hover values) + hero stat tiles + gauge tick ring + drop Chart.js — SHIPPED `8922d79`
+  - [x] X4 Verified (syntax, contracts, 11/11 tests, ruff, 12 contrast pairs) → CI green → auto-deployed → live screenshot-verified every tab (overview, cache, sweep, logs)
+  - [x] X5 Post-pass fixes, proven via fast-loop (HTML sweep legend, sidebar live dot on deep-link, expired TTL track hidden) — live-verified, committed for durability; pipeline redeploy is a no-op
+
+- [ ] **🟡 P2** **Dashboard round 6 (rail + boxy + ambient) — owner brief 2026-09-04.** Tracked sub-todos:
+  - [x] Y1 Scope locked (icon rail, sharper radii, hover micro-interactions, visibility audit, lowkey ambient orbs; CSS-keyframe compositors only, anime layer untouched)
+  - [x] Y2 Implement (rail shell, 10–16px radii, transitions, sweep-readout ink fix, ambient orbs + reduced-motion off) + review fixes (icon toggle, HTML legends, deep-link dot, expired TTL) — live-verified via fast-loop + screenshots
+  - [x] Y3 Verify (syntax, contracts, 11/11 tests, ruff, contrast) → fast-loop → screenshot → commit/push → docs
+  - [x] Y4 Sharp-corner follow-up (all radii → 0; dots/orbs stay round by design) — live-verified via fast-loop + screenshot
+  - [x] Y5 Gauge card composition (flex column, centered dial, 0–50× scale row) — live-verified via fast-loop + screenshot
+
+- [ ] **🟠 P1** **Custom domain `semcache.noblechicken.me` (Namecheap → Lightsail → Caddy auto-HTTPS).** Tracked sub-todos:
+  - [x] D1 Namecheap A record `semcache` → `98.95.205.92` (owner done; verified propagating via recursive + direct lookup)
+  - [x] D2a Host pre-staged: `DOMAIN=semcache.noblechicken.me`, stack healthy on IP (cert issuance retries in background)
+  - [x] D2b Caddyfile surgery (`1619254`) PUSHED post-propagation → pipeline deploying
+  - [x] D3 Verified: "certificate obtained successfully" (Let's Encrypt production) in Caddy logs → `https://semcache.noblechicken.me/health` = ok over public TLS → dashboard screenshot-verified on the new origin (no cert warnings)
 - [x] **🟡 P2** `requirements.txt` now caps the embedding-sensitive packages (2026-09-01 session 4): `sentence-transformers>=3.0.0,<6` and explicit `torch>=2.0,<3.0`. Ranges include every version in use (Docker/CI pin 2.5.1+cpu, local 2.13.0, ST 5.7.0 — curve re-verified identical on ST 5.7.0) while blocking silent future major bumps from shifting the threshold curve.
 
 ## 🟢 P3 — Nice-to-haves / stretch
