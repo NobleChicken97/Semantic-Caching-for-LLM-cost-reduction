@@ -1,146 +1,199 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="auto">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark light">
 <title>Semantic Cache Proxy — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
-  /* ---------- tokens ---------- */
+  /* ---------- Watermelon-lane tokens (OKLCH roles ported from their public index.css) ---------- */
   :root {
-    --bg: #fbfbfa; --surface: #ffffff; --surface2: #f4f4f2; --border: #e5e4e0;
-    --ink: #1a1a1e; --muted: #5b5b62; --accent: #1d4ed8; --accent-ink: #ffffff;
-    --green: #166534; --green-bg: #dcfce7;
-    --amber: #92400e; --amber-bg: #fef3c7;
-    --red: #b91c1c; --red-bg: #fee2e2;
-    --gray: #57575e; --gray-bg: #ececea;
-    --radius: 10px; --shadow: 0 1px 2px rgba(20, 20, 25, .06);
+    --bg: oklch(1 0 0); --surface: oklch(1 0 0); --surface2: oklch(0.967 0.001 286.375);
+    --ink: oklch(0.145 0 0); --muted: oklch(0.45 0 0); --border: oklch(0.922 0 0);
+    --lime: oklch(76.8% 0.233 130.85); --on-lime: oklch(0.25 0.02 130);
+    --hero: #3f6212;
+    --hit-bg: #ecfccb; --hit-ink: #3f6212;
+    --miss-bg: #fef3c7; --miss-ink: #92400e;
+    --bad-bg: #fee2e2; --bad-ink: #991b1b;
+    --flat-bg: #ececea; --flat-ink: #57575e;
+    --c1: #eab308; --c2: #d97706; --c3: #ea580c; --c4: #c2410c; --c5: #9a3412;
+    --hit: #65a30d; --miss: #d97706; --flat: #a1a1aa;
+    --radius: 10px; --shadow: 0 1px 2px rgba(20, 20, 25, .07);
     --spring: cubic-bezier(.16, 1, .3, 1);
+    --font: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  html[data-theme="light"] {
+    --bg: oklch(1 0 0); --surface: oklch(1 0 0); --surface2: oklch(0.967 0.001 286.375);
+    --ink: oklch(0.145 0 0); --muted: oklch(0.45 0 0); --border: oklch(0.922 0 0);
+    --lime: oklch(76.8% 0.233 130.85); --on-lime: oklch(0.25 0.02 130);
+    --hero: #3f6212;
+    --hit-bg: #ecfccb; --hit-ink: #3f6212;
+    --miss-bg: #fef3c7; --miss-ink: #92400e;
+    --bad-bg: #fee2e2; --bad-ink: #991b1b;
+    --flat-bg: #ececea; --flat-ink: #57575e;
+    --hit: #65a30d; --miss: #d97706; --flat: #a1a1aa;
+    --shadow: 0 1px 2px rgba(20, 20, 25, .07);
   }
   html[data-theme="dark"] {
-    --bg: #141417; --surface: #1d1d21; --surface2: #26262c; --border: #2e2e35;
-    --ink: #f4f4f5; --muted: #a8a8b3; --accent: #8aa8ff; --accent-ink: #101014;
-    --green: #4ade80; --green-bg: rgba(74, 222, 128, .13);
-    --amber: #fbbf24; --amber-bg: rgba(251, 191, 36, .13);
-    --red: #f87171; --red-bg: rgba(248, 113, 113, .13);
-    --gray: #b9b9c2; --gray-bg: rgba(185, 185, 194, .13);
-    --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+    --bg: oklch(0.145 0 0); --surface: oklch(0.205 0 0); --surface2: oklch(0.269 0 0);
+    --ink: oklch(0.985 0 0); --muted: oklch(0.708 0 0); --border: oklch(1 0 0 / 10%);
+    --lime: oklch(76.8% 0.233 130.85); --on-lime: oklch(0.25 0.02 130);
+    --hero: oklch(76.8% 0.233 130.85);
+    --hit-bg: rgba(163, 230, 53, .13); --hit-ink: #bef264;
+    --miss-bg: rgba(217, 119, 6, .16); --miss-ink: #fbbf24;
+    --bad-bg: rgba(248, 113, 113, .14); --bad-ink: #f87171;
+    --flat-bg: rgba(161, 161, 170, .14); --flat-ink: #d4d4d8;
+    --hit: #a3e635; --miss: #f59e0b; --flat: #71717a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .45);
   }
-  @media (prefers-color-scheme: dark) {
+  @media (prefers-color-scheme: light) {
     html[data-theme="auto"] {
-      --bg: #141417; --surface: #1d1d21; --surface2: #26262c; --border: #2e2e35;
-      --ink: #f4f4f5; --muted: #a8a8b3; --accent: #8aa8ff; --accent-ink: #101014;
-      --green: #4ade80; --green-bg: rgba(74, 222, 128, .13);
-      --amber: #fbbf24; --amber-bg: rgba(251, 191, 36, .13);
-      --red: #f87171; --red-bg: rgba(248, 113, 113, .13);
-      --gray: #b9b9c2; --gray-bg: rgba(185, 185, 194, .13);
-      --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+      --bg: oklch(1 0 0); --surface: oklch(1 0 0); --surface2: oklch(0.967 0.001 286.375);
+      --ink: oklch(0.145 0 0); --muted: oklch(0.45 0 0); --border: oklch(0.922 0 0);
+      --hero: #3f6212;
+      --hit-bg: #ecfccb; --hit-ink: #3f6212;
+      --miss-bg: #fef3c7; --miss-ink: #92400e;
+      --bad-bg: #fee2e2; --bad-ink: #991b1b;
+      --flat-bg: #ececea; --flat-ink: #57575e;
+      --hit: #65a30d; --miss: #d97706; --flat: #a1a1aa;
+      --shadow: 0 1px 2px rgba(20, 20, 25, .07);
     }
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { color-scheme: light dark; }
+  html { color-scheme: dark light; }
   body {
     background: var(--bg); color: var(--ink);
-    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+    font: 14px/1.5 var(--font);
     -webkit-font-smoothing: antialiased;
   }
   .num { font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--mono); font-size: 12px; }
 
-  /* ---------- header ---------- */
-  header {
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    padding: 12px 22px; background: var(--surface);
-    border-bottom: 1px solid var(--border);
+  /* ---------- shell ---------- */
+  .shell { display: flex; min-height: 100vh; }
+  .side {
+    width: 232px; flex: none; display: flex; flex-direction: column; gap: 6px;
+    background: var(--surface); border-right: 1px solid var(--border);
+    padding: 18px 12px; position: sticky; top: 0; height: 100vh;
   }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
-  .dot.ok { background: var(--green); }
-  .dot.bad { background: var(--red); }
-  header h1 { font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
-  header .sub { color: var(--muted); font-size: 12px; }
-  header .sub code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
-  nav { display: flex; gap: 2px; margin-left: auto; align-items: center; flex-wrap: wrap; }
-  nav button.tabbtn {
-    background: transparent; color: var(--muted); border: 1px solid transparent;
-    padding: 7px 13px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 550;
+  .mark { display: flex; align-items: center; gap: 10px; padding: 2px 8px 14px; }
+  .mark-box {
+    width: 34px; height: 34px; border-radius: 9px; background: var(--lime); color: var(--on-lime);
+    font-family: var(--mono); font-weight: 800; font-size: 14px;
+    display: flex; align-items: center; justify-content: center; flex: none;
   }
-  nav button.tabbtn:hover { color: var(--ink); background: var(--surface2); }
-  nav button.tabbtn.active { color: var(--ink); background: var(--surface2); border-color: var(--border); }
+  .mark b { display: block; font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
+  .mark span { display: block; color: var(--muted); font-size: 11.5px; }
+  .navlabel { color: var(--muted); font-size: 11px; font-weight: 650; text-transform: uppercase;
+    letter-spacing: .07em; padding: 8px 10px 4px; }
+  nav.side-nav { display: flex; flex-direction: column; gap: 2px; }
+  nav.side-nav button {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: transparent; color: var(--muted); border: 0; border-radius: 8px;
+    padding: 9px 10px; cursor: pointer; font-size: 13.5px; font-weight: 550; font-family: inherit;
+    text-align: left;
+  }
+  nav.side-nav button svg { flex: none; }
+  nav.side-nav button:hover { color: var(--ink); background: var(--surface2); }
+  nav.side-nav button.active { color: var(--ink); background: var(--surface2); }
+  nav.side-nav button.active svg { color: var(--hero); }
+  .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 8px 0;
+    border-top: 1px solid var(--border); }
+  .live { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--hit); }
+  .dot.bad { background: var(--bad-ink); }
   #theme-toggle {
     background: transparent; color: var(--muted); border: 1px solid var(--border);
-    border-radius: 8px; padding: 7px 11px; cursor: pointer; font-size: 12px; font-weight: 550;
+    border-radius: 8px; padding: 7px 10px; cursor: pointer; font-size: 12px; font-weight: 600;
+    font-family: inherit; text-align: left;
   }
   #theme-toggle:hover { color: var(--ink); }
+  .tuneline { color: var(--muted); font-size: 11.5px; padding: 0 2px; }
+  .tuneline b { color: var(--ink); }
   button:focus-visible, input:focus-visible, select:focus-visible {
-    outline: 2px solid var(--accent); outline-offset: 2px;
+    outline: 2px solid var(--hit); outline-offset: 2px;
   }
 
-  main { padding: 20px 22px 40px; max-width: 1180px; margin: 0 auto; }
+  .main-col { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .topbar { display: flex; align-items: baseline; gap: 12px; padding: 18px 26px 0; flex-wrap: wrap; }
+  .topbar h2 { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+  .topbar code { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+  main { padding: 16px 26px 48px; max-width: 1160px; width: 100%; }
   .tab { display: none; }
   .tab.active { display: block; animation: tab-in 180ms var(--spring); }
   @keyframes tab-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-  /* ---------- headline stats ---------- */
+  /* ---------- hero + stats ---------- */
+  .hero {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow); padding: 20px 24px; display: flex; align-items: baseline;
+    gap: 16px; flex-wrap: wrap;
+  }
+  .hero .big { font-size: 46px; font-weight: 800; letter-spacing: -.03em; color: var(--hero); line-height: 1; }
+  .hero .what { color: var(--muted); font-size: 13px; max-width: 46ch; }
+  .hero .what b { color: var(--ink); }
   .stats { display: flex; flex-wrap: wrap; gap: 0; background: var(--surface);
-    border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
-  .stat { padding: 16px 20px; min-width: 150px; flex: 1 1 0; border-left: 1px solid var(--border); }
+    border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow);
+    overflow: hidden; margin-top: 14px; }
+  .stat { padding: 14px 20px; min-width: 150px; flex: 1 1 0; border-left: 1px solid var(--border); }
   .stat:first-child { border-left: 0; }
-  .stat.hero { flex-grow: 1.6; }
-  .stat .label { color: var(--muted); font-size: 12px; font-weight: 550; }
-  .stat .value { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin-top: 2px; }
-  .stat.hero .value { font-size: 32px; }
+  .stat .label { color: var(--muted); font-size: 12px; font-weight: 600; }
+  .stat .value { font-size: 24px; font-weight: 750; letter-spacing: -.02em; margin-top: 2px; }
   .stat .cap { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  .stat .value small { font-size: 13px; color: var(--muted); font-weight: 500; }
 
-  /* ---------- panels & grid ---------- */
+  /* ---------- panels ---------- */
   .panel { background: var(--surface); border: 1px solid var(--border);
     border-radius: 12px; box-shadow: var(--shadow); padding: 16px 18px; margin-top: 14px; }
-  .panel > .label { color: var(--muted); font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+  .panel > .label { color: var(--muted); font-size: 12px; font-weight: 650; margin-bottom: 10px; }
   .panel .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
   .grid2 > .panel { margin-top: 0; }
-  .grid2-wrap { margin-top: 14px; }
-  @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } .stat { min-width: 45%; border-left: 0; border-top: 1px solid var(--border); } .stat:nth-child(-n+2) { border-top: 0; } }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
   canvas { max-height: 240px; }
 
   .row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
   input[type=text], input[type=number], select {
     background: var(--surface); color: var(--ink); border: 1px solid var(--border);
-    border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none;
+    border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: inherit; outline: none;
   }
   input[type=text] { min-width: 220px; }
-  input:focus, select:focus { border-color: var(--accent); }
+  input:focus, select:focus { border-color: var(--hit); }
   button.primary {
-    background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px;
-    padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 650;
+    background: var(--lime); color: var(--on-lime); border: 0; border-radius: 8px;
+    padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 700; font-family: inherit;
   }
   button.primary:disabled { opacity: .55; cursor: wait; }
-  button.danger { background: transparent; color: var(--red); border: 1px solid currentColor; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 600; }
-  button.small { background: var(--surface2); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 550; }
+  button.danger { background: transparent; color: var(--bad-ink); border: 1px solid currentColor; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 650; font-family: inherit; }
+  button.small { background: var(--surface2); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 600; font-family: inherit; }
   button.small:hover { border-color: var(--muted); }
   label.toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; }
 
   /* ---------- tables ---------- */
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
-  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 650; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
   tr:last-child td { border-bottom: 0; }
   tbody tr:hover td { background: var(--surface2); }
   .prompt-cell { max-width: 380px; overflow-wrap: anywhere; }
-  tr.hl td { background: var(--green-bg); }
-  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
-  .badge.HIT { background: var(--green-bg); color: var(--green); }
-  .badge.MISS { background: var(--amber-bg); color: var(--amber); }
-  .badge.BYPASS, .badge.ERROR { background: var(--gray-bg); color: var(--gray); }
-  .badge.expected-yes { background: var(--green-bg); color: var(--green); }
-  .badge.expected-no { background: var(--red-bg); color: var(--red); }
+  tr.hl td { background: var(--hit-bg); }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 750; white-space: nowrap; }
+  .badge.HIT { background: var(--hit-bg); color: var(--hit-ink); }
+  .badge.MISS { background: var(--miss-bg); color: var(--miss-ink); }
+  .badge.BYPASS, .badge.ERROR { background: var(--flat-bg); color: var(--flat-ink); }
+  .badge.expected-yes { background: var(--hit-bg); color: var(--hit-ink); }
+  .badge.expected-no { background: var(--bad-bg); color: var(--bad-ink); }
   .muted { color: var(--muted); }
   .empty { color: var(--muted); padding: 26px 16px; text-align: center; font-size: 13px; }
-  .empty b { color: var(--ink); font-weight: 650; }
-  .err { color: var(--red); font-size: 12px; margin-top: 6px; min-height: 16px; }
+  .empty b { color: var(--ink); }
+  .err { color: var(--bad-ink); font-size: 12px; margin-top: 6px; min-height: 16px; }
   .ttl { display: block; height: 3px; background: var(--surface2); border-radius: 2px; margin-top: 5px; min-width: 80px; overflow: hidden; }
-  .ttl i { display: block; height: 100%; background: var(--green); border-radius: 2px; }
+  .ttl i { display: block; height: 100%; background: var(--hit); border-radius: 2px; }
   .skel { display: block; height: 13px; border-radius: 6px; background: var(--surface2); overflow: hidden; position: relative; }
   .skel::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
     background: linear-gradient(90deg, transparent, var(--border), transparent);
@@ -148,9 +201,22 @@
   @keyframes shimmer { to { transform: translateX(100%); } }
 
   .tune-result { display: flex; gap: 26px; flex-wrap: wrap; align-items: baseline; margin: 4px 0 12px; }
-  .tune-result .big { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
-  .tune-result .lab { color: var(--muted); font-size: 12px; font-weight: 600; }
+  .tune-result .big { font-size: 24px; font-weight: 750; letter-spacing: -.02em; }
+  .tune-result .lab { color: var(--muted); font-size: 12px; font-weight: 650; }
 
+  @media (max-width: 860px) {
+    .shell { flex-direction: column; }
+    .side { width: auto; height: auto; position: static; border-right: 0;
+      border-bottom: 1px solid var(--border); padding: 12px; }
+    .mark { padding-bottom: 8px; }
+    nav.side-nav { flex-direction: row; overflow-x: auto; }
+    nav.side-nav button { width: auto; white-space: nowrap; }
+    .navlabel, .side-foot .tuneline { display: none; }
+    .side-foot { flex-direction: row; align-items: center; border-top: 0; padding: 8px 2px 0; }
+    .hero .big { font-size: 36px; }
+    .stat { min-width: 45%; border-left: 0; border-top: 1px solid var(--border); }
+    .stat:nth-child(-n+2) { border-top: 0; }
+  }
   @media (prefers-reduced-motion: reduce) {
     .tab.active { animation: none; }
     .skel::after { animation: none; }
@@ -158,126 +224,148 @@
 </style>
 </head>
 <body>
-<header>
-  <div class="brand">
-    <span class="dot" id="live-dot" title="backend reachability"></span>
-    <div>
-      <h1>Semantic Cache Proxy</h1>
-      <div class="sub">hit-rate · cost saved · latency — live from <code id="base-url"></code></div>
+<div class="shell">
+  <aside class="side">
+    <div class="mark">
+      <span class="mark-box">SC</span>
+      <div><b>Semantic Cache</b><span>proxy · ops console</span></div>
     </div>
+    <div class="navlabel">Observe</div>
+    <nav class="side-nav" aria-label="Dashboard sections">
+      <button data-tab="metrics" class="active">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 13.5h12"/><path d="M4 11V8M8 11V4.5M12 11V6.5"/></svg>
+        Metrics</button>
+      <button data-tab="cache">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5.5 8 2.5l5.5 3v5L8 13.5 2.5 10.5v-5Z"/><path d="M2.5 5.5 8 8.5l5.5-3M8 8.5v5"/></svg>
+        Cache Browser</button>
+      <button data-tab="sweep">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 5h11M2.5 11h11"/><circle cx="6" cy="5" r="1.8" fill="var(--surface)" /><circle cx="10.5" cy="11" r="1.8" fill="var(--surface)" /></svg>
+        Threshold Lab</button>
+      <button data-tab="logs">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 4h8M5 8h8M5 12h8"/><circle cx="2.5" cy="4" r=".9" fill="currentColor" stroke="none"/><circle cx="2.5" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="2.5" cy="12" r=".9" fill="currentColor" stroke="none"/></svg>
+        Request Log</button>
+    </nav>
+    <div class="side-foot">
+      <div class="live"><span class="dot" id="live-dot" title="backend reachability"></span><span id="live-text">connecting…</span></div>
+      <button id="theme-toggle" title="color theme: dark / light / system">theme: dark</button>
+      <div class="tuneline">threshold <b>0.85</b> · F1 <b>0.857</b> measured</div>
+    </div>
+  </aside>
+
+  <div class="main-col">
+    <div class="topbar">
+      <h2 id="section-title">Metrics</h2>
+      <code id="base-url"></code>
+    </div>
+    <main>
+      <!-- ============ METRICS ============ -->
+      <section id="tab-metrics" class="tab active" aria-label="Metrics">
+        <div class="hero">
+          <div class="big num" id="m-tokens">–</div>
+          <div class="what"><b>tokens never generated again.</b> Every HIT below is an LLM call you didn't pay for — served from the notebook instead.</div>
+        </div>
+        <div class="stats" role="group" aria-label="Headline savings">
+          <div class="stat"><div class="label">Hit rate</div><div class="value num" id="m-hitrate">–</div><div class="cap" id="m-hits-cap">–</div></div>
+          <div class="stat"><div class="label">Speedup</div><div class="value num" id="m-speedup">–</div><div class="cap" id="m-lat-cap">–</div></div>
+          <div class="stat"><div class="label">Requests</div><div class="value num" id="m-total">–</div><div class="cap" id="m-req-cap">–</div></div>
+          <div class="stat"><div class="label">Est. cost saved</div><div class="value num" id="m-cost">–</div><div class="cap">gpt-3.5-turbo pricing; free models $0</div></div>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button class="primary" id="btn-refresh-metrics">Refresh now</button>
+          <label class="toggle"><input type="checkbox" id="auto-metrics" checked> auto-refresh every 5 s</label>
+          <span id="metrics-updated" class="muted" style="font-size:12px"></span>
+        </div>
+        <div class="grid2">
+          <div class="panel"><div class="label">Request mix over time (recent log)</div><canvas id="chart-trend"></canvas><div class="hint" id="trend-hint"></div></div>
+          <div class="panel"><div class="label">Hit / miss split (lifetime)</div><canvas id="chart-split"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="label">Per-user savings</div>
+          <table>
+            <thead><tr><th scope="col">User</th><th scope="col">Requests</th><th scope="col">Hits</th><th scope="col">Tokens saved</th><th scope="col">Cost saved</th></tr></thead>
+            <tbody id="users-body"><tr><td colspan="5" class="empty">No data yet.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ CACHE BROWSER ============ -->
+      <section id="tab-cache" class="tab" aria-label="Cache browser">
+        <div class="row">
+          <input type="text" id="cache-search" placeholder="Search prompts…" aria-label="Search cached prompts">
+          <button class="small" id="btn-reload-cache">Reload</button>
+          <span style="flex:1"></span>
+          <button class="danger" id="btn-purge-all">Purge ALL</button>
+        </div>
+        <div class="err" id="cache-error"></div>
+        <div class="panel" style="margin-top:0;padding:4px 6px;">
+          <table>
+            <thead><tr>
+              <th scope="col">ID</th><th scope="col">Prompt</th><th scope="col">Model</th><th scope="col">Created</th><th scope="col">Expires</th><th scope="col">Hits</th><th scope="col">Last hit</th><th scope="col"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Actions</span></th>
+            </tr></thead>
+            <tbody id="cache-body"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div id="cache-count" class="muted" style="margin-top:8px;font-size:12px"></div>
+      </section>
+
+      <!-- ============ THRESHOLD LAB ============ -->
+      <section id="tab-sweep" class="tab" aria-label="Threshold lab">
+        <div class="row">
+          <input type="text" id="sweep-thresholds" value="0.80, 0.82, 0.85, 0.88, 0.90, 0.93, 0.95" aria-label="Threshold grid">
+          <button class="primary" id="btn-run-sweep">Run sweep</button>
+          <button class="small" id="btn-auto-tune">Auto-tune threshold</button>
+        </div>
+        <div class="err" id="sweep-error"></div>
+        <div class="panel" id="tune-panel" hidden>
+          <div class="label">Auto-tune evidence</div>
+          <div class="tune-result">
+            <div><div class="lab">recommended</div><div class="big num" id="tune-best">–</div></div>
+            <div><div class="lab">F1 at pick</div><div class="big num" id="tune-f1">–</div></div>
+          </div>
+          <div class="hint" style="margin:0 0 10px">Borderline labeled pairs within ±0.03 of the pick — the concrete cases the threshold decision rests on.</div>
+          <table>
+            <thead><tr><th scope="col">Prompt A</th><th scope="col">Prompt B</th><th scope="col">Similarity</th><th scope="col">Labeled</th></tr></thead>
+            <tbody id="tune-body"></tbody>
+          </table>
+        </div>
+        <div class="panel"><div class="label">Precision / recall / F1 by threshold</div><canvas id="chart-sweep"></canvas></div>
+        <div class="panel">
+          <table>
+            <thead><tr><th scope="col">Threshold</th><th scope="col">Precision</th><th scope="col">Recall</th><th scope="col">F1</th></tr></thead>
+            <tbody id="sweep-body"><tr><td colspan="4" class="empty">Run a sweep to see precision/recall.</td></tr></tbody>
+          </table>
+          <p class="muted" style="margin-top:10px;font-size:12px">
+            Production threshold is <b>0.85</b> — measured F1-optimal on the labeled set (see docs/THRESHOLD_ANALYSIS.md).
+          </p>
+        </div>
+      </section>
+
+      <!-- ============ REQUEST LOG ============ -->
+      <section id="tab-logs" class="tab" aria-label="Request log">
+        <div class="row">
+          <button class="primary" id="btn-refresh-logs">Refresh</button>
+          <label class="toggle"><input type="checkbox" id="auto-logs" checked> poll every 4 s while visible</label>
+          <select id="log-limit" aria-label="Rows to show">
+            <option>25</option><option selected>50</option><option>100</option><option>250</option>
+          </select>
+          <select id="log-filter" aria-label="Filter by outcome">
+            <option value="">all outcomes</option>
+            <option value="HIT">HIT</option>
+            <option value="MISS">MISS</option>
+            <option value="BYPASS">BYPASS</option>
+            <option value="ERROR">ERROR</option>
+          </select>
+        </div>
+        <div class="panel" style="margin-top:0;padding:4px 6px;">
+          <table>
+            <thead><tr><th scope="col">Time</th><th scope="col">Outcome</th><th scope="col">Prompt</th><th scope="col">Similarity</th><th scope="col">Latency</th><th scope="col">Tokens in/out</th><th scope="col">Est. cost</th></tr></thead>
+            <tbody id="logs-body"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
   </div>
-  <nav aria-label="Dashboard sections">
-    <button class="tabbtn active" data-tab="metrics">Metrics</button>
-    <button class="tabbtn" data-tab="cache">Cache Browser</button>
-    <button class="tabbtn" data-tab="sweep">Threshold Sweep</button>
-    <button class="tabbtn" data-tab="logs">Request Log</button>
-    <button id="theme-toggle" title="color theme: system / light / dark">theme: system</button>
-  </nav>
-</header>
-
-<main>
-  <!-- ============ METRICS ============ -->
-  <section id="tab-metrics" class="tab active" aria-label="Metrics">
-    <div class="row">
-      <button class="primary" id="btn-refresh-metrics">Refresh now</button>
-      <label class="toggle"><input type="checkbox" id="auto-metrics" checked> auto-refresh every 5 s</label>
-      <span id="metrics-updated" class="muted" style="font-size:12px"></span>
-    </div>
-    <div class="stats" role="group" aria-label="Headline savings">
-      <div class="stat hero"><div class="label">Tokens saved</div><div class="value num" id="m-tokens">–</div><div class="cap" id="m-req-cap">–</div></div>
-      <div class="stat"><div class="label">Hit rate</div><div class="value num" id="m-hitrate">–</div><div class="cap" id="m-hits-cap">–</div></div>
-      <div class="stat"><div class="label">Speedup</div><div class="value num" id="m-speedup">–</div><div class="cap" id="m-lat-cap">–</div></div>
-      <div class="stat"><div class="label">Est. cost saved</div><div class="value num" id="m-cost">–</div><div class="cap">gpt-3.5-turbo pricing; free models $0</div></div>
-    </div>
-    <div class="grid2-wrap grid2">
-      <div class="panel"><div class="label">Request mix over time (recent log)</div><canvas id="chart-trend"></canvas><div class="hint" id="trend-hint"></div></div>
-      <div class="panel"><div class="label">Hit / miss split (lifetime)</div><canvas id="chart-split"></canvas></div>
-    </div>
-    <div class="panel">
-      <div class="label">Per-user savings</div>
-      <table>
-        <thead><tr><th scope="col">User</th><th scope="col">Requests</th><th scope="col">Hits</th><th scope="col">Tokens saved</th><th scope="col">Cost saved</th></tr></thead>
-        <tbody id="users-body"><tr><td colspan="5" class="empty">No data yet.</td></tr></tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- ============ CACHE BROWSER ============ -->
-  <section id="tab-cache" class="tab" aria-label="Cache browser">
-    <div class="row">
-      <input type="text" id="cache-search" placeholder="Search prompts…" aria-label="Search cached prompts">
-      <button class="small" id="btn-reload-cache">Reload</button>
-      <span style="flex:1"></span>
-      <button class="danger" id="btn-purge-all">Purge ALL</button>
-    </div>
-    <div class="err" id="cache-error"></div>
-    <div class="panel" style="margin-top:0;padding:4px 6px;">
-      <table>
-        <thead><tr>
-          <th scope="col">ID</th><th scope="col">Prompt</th><th scope="col">Model</th><th scope="col">Created</th><th scope="col">Expires</th><th scope="col">Hits</th><th scope="col">Last hit</th><th scope="col"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Actions</span></th>
-        </tr></thead>
-        <tbody id="cache-body"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
-      </table>
-    </div>
-    <div id="cache-count" class="muted" style="margin-top:8px;font-size:12px"></div>
-  </section>
-
-  <!-- ============ THRESHOLD SWEEP ============ -->
-  <section id="tab-sweep" class="tab" aria-label="Threshold sweep">
-    <div class="row">
-      <input type="text" id="sweep-thresholds" value="0.80, 0.82, 0.85, 0.88, 0.90, 0.93, 0.95" aria-label="Threshold grid">
-      <button class="primary" id="btn-run-sweep">Run sweep</button>
-      <button class="small" id="btn-auto-tune">Auto-tune threshold</button>
-    </div>
-    <div class="err" id="sweep-error"></div>
-    <div class="panel" id="tune-panel" hidden>
-      <div class="label">Auto-tune evidence</div>
-      <div class="tune-result">
-        <div><div class="lab">recommended</div><div class="big num" id="tune-best">–</div></div>
-        <div><div class="lab">F1 at pick</div><div class="big num" id="tune-f1">–</div></div>
-      </div>
-      <div class="hint" style="margin:0 0 10px">Borderline labeled pairs within ±0.03 of the pick — the concrete cases the threshold decision rests on.</div>
-      <table>
-        <thead><tr><th scope="col">Prompt A</th><th scope="col">Prompt B</th><th scope="col">Similarity</th><th scope="col">Labeled</th></tr></thead>
-        <tbody id="tune-body"></tbody>
-      </table>
-    </div>
-    <div class="panel"><div class="label">Precision / recall / F1 by threshold</div><canvas id="chart-sweep"></canvas></div>
-    <div class="panel">
-      <table>
-        <thead><tr><th scope="col">Threshold</th><th scope="col">Precision</th><th scope="col">Recall</th><th scope="col">F1</th></tr></thead>
-        <tbody id="sweep-body"><tr><td colspan="4" class="empty">Run a sweep to see precision/recall.</td></tr></tbody>
-      </table>
-      <p class="muted" style="margin-top:10px;font-size:12px">
-        Production threshold is <b>0.85</b> — measured F1-optimal on the labeled set (see docs/THRESHOLD_ANALYSIS.md).
-      </p>
-    </div>
-  </section>
-
-  <!-- ============ REQUEST LOG ============ -->
-  <section id="tab-logs" class="tab" aria-label="Request log">
-    <div class="row">
-      <button class="primary" id="btn-refresh-logs">Refresh</button>
-      <label class="toggle"><input type="checkbox" id="auto-logs" checked> poll every 4 s while visible</label>
-      <select id="log-limit" aria-label="Rows to show">
-        <option>25</option><option selected>50</option><option>100</option><option>250</option>
-      </select>
-      <select id="log-filter" aria-label="Filter by outcome">
-        <option value="">all outcomes</option>
-        <option value="HIT">HIT</option>
-        <option value="MISS">MISS</option>
-        <option value="BYPASS">BYPASS</option>
-        <option value="ERROR">ERROR</option>
-      </select>
-    </div>
-    <div class="panel" style="margin-top:0;padding:4px 6px;">
-      <table>
-        <thead><tr><th scope="col">Time</th><th scope="col">Outcome</th><th scope="col">Prompt</th><th scope="col">Similarity</th><th scope="col">Latency</th><th scope="col">Tokens in/out</th><th scope="col">Est. cost</th></tr></thead>
-        <tbody id="logs-body"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
-      </table>
-    </div>
-  </section>
-</main>
+</div>
 
 <script type="module">
 // ---------- tiny motion layer (anime.js v4, ESM, degrades to instant) ----------
@@ -317,24 +405,23 @@ async function staggerIn(tbody) {
   catch (e) { /* static rows are fine */ }
 }
 
-// ---------- theme (system / light / dark) ----------
+// ---------- theme (dark-first: dark / light / system) ----------
 const root = document.documentElement;
 const themeBtn = document.getElementById("theme-toggle");
-function systemDark() { return matchMedia("(prefers-color-scheme: dark)").matches; }
 function paintTheme() {
-  const pref = localStorage.getItem("scp-theme") || "system";
+  const pref = localStorage.getItem("scp-theme") || "dark";
   root.dataset.theme = pref === "system" ? "auto" : pref;
   themeBtn.textContent = "theme: " + pref;
   rebuildCharts();
 }
 themeBtn.onclick = () => {
-  const order = ["system", "light", "dark"];
-  const next = order[(order.indexOf(localStorage.getItem("scp-theme") || "system") + 1) % order.length];
+  const order = ["dark", "light", "system"];
+  const next = order[(order.indexOf(localStorage.getItem("scp-theme") || "dark") + 1) % order.length];
   localStorage.setItem("scp-theme", next);
   paintTheme();
 };
-matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
-  if ((localStorage.getItem("scp-theme") || "system") === "system") rebuildCharts();
+matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", () => {
+  if ((localStorage.getItem("scp-theme") || "dark") === "system") rebuildCharts();
 });
 
 // ---------- helpers ----------
@@ -360,8 +447,10 @@ function cssVar(name) { return getComputedStyle(document.documentElement).getPro
 function palette() {
   return {
     text: cssVar("--ink") || "#888", muted: cssVar("--muted") || "#888",
-    grid: cssVar("--border") || "#333", green: cssVar("--green"), amber: cssVar("--amber"),
-    gray: cssVar("--gray"), red: cssVar("--red"), accent: cssVar("--accent"),
+    grid: cssVar("--border") || "#333",
+    hit: cssVar("--hit"), miss: cssVar("--miss"), flat: cssVar("--flat"),
+    c1: cssVar("--c1"), c2: cssVar("--c2"), c3: cssVar("--c3"),
+    accent: cssVar("--lime"),
   };
 }
 function fmtTime(ts) {
@@ -394,23 +483,26 @@ function setDot(ok) {
   const d = $("live-dot");
   d.classList.remove("ok", "bad");
   d.classList.add(ok ? "ok" : "bad");
+  $("live-text").textContent = ok ? "live" : "unreachable";
 }
 
 // ---------- tabs ----------
+const TITLES = { metrics: "Metrics", cache: "Cache browser", sweep: "Threshold lab", logs: "Request log" };
 let activeTab = "metrics";
 function activateTab(name) {
-  const btn = document.querySelector(`nav button.tabbtn[data-tab="${name}"]`);
+  const btn = document.querySelector(`nav.side-nav button[data-tab="${name}"]`);
   if (!btn) return;
-  document.querySelectorAll("nav button.tabbtn").forEach(x => x.classList.remove("active"));
+  document.querySelectorAll("nav.side-nav button").forEach(x => x.classList.remove("active"));
   btn.classList.add("active");
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
   $("tab-" + name).classList.add("active");
+  $("section-title").textContent = TITLES[name] || name;
   activeTab = name;
   if (activeTab === "metrics") { loadMetrics(); loadTrend(); }
   if (activeTab === "cache") loadCache();
   if (activeTab === "logs") loadLogs();
 }
-document.querySelectorAll("nav button.tabbtn").forEach(b => { b.onclick = () => activateTab(b.dataset.tab); });
+document.querySelectorAll("nav.side-nav button").forEach(b => { b.onclick = () => activateTab(b.dataset.tab); });
 
 // deep-link support: /dashboard?tab=sweep&token=<ADMIN_TOKEN> opens on that tab
 const urlTab = new URLSearchParams(location.search).get("tab");
@@ -430,7 +522,7 @@ function rebuildCharts() {
 function drawSplit(m) {
   const p = palette();
   const hits = Math.round(m.total_requests * m.hit_rate);
-  const data = { labels: ["HIT", "MISS"], datasets: [{ data: [hits, m.total_requests - hits], backgroundColor: [p.green, p.amber], borderWidth: 0 }] };
+  const data = { labels: ["HIT", "MISS"], datasets: [{ data: [hits, m.total_requests - hits], backgroundColor: [p.hit, p.miss], borderWidth: 0 }] };
   splitChart = new Chart($("chart-split"), { type: "doughnut", data: data, options: { plugins: { legend: { labels: { color: p.muted } } } } });
 }
 function drawTrend(t) {
@@ -438,9 +530,9 @@ function drawTrend(t) {
   const data = {
     labels: t.labels,
     datasets: [
-      { label: "HIT", data: t.hits, backgroundColor: p.green, borderRadius: 3 },
-      { label: "MISS", data: t.misses, backgroundColor: p.amber, borderRadius: 3 },
-      { label: "other", data: t.other, backgroundColor: p.gray, borderRadius: 3 },
+      { label: "HIT", data: t.hits, backgroundColor: p.hit, borderRadius: 3 },
+      { label: "MISS", data: t.misses, backgroundColor: p.miss, borderRadius: 3 },
+      { label: "other", data: t.other, backgroundColor: p.flat, borderRadius: 3 },
     ],
   };
   trendChart = new Chart($("chart-trend"), {
@@ -455,9 +547,9 @@ function drawSweep(rs) {
   const data = {
     labels: rs.map(r => r.threshold.toFixed(2)),
     datasets: [
-      { label: "precision", data: rs.map(r => r.precision), borderColor: p.accent, tension: .3 },
-      { label: "recall", data: rs.map(r => r.recall), borderColor: p.green, tension: .3 },
-      { label: "F1", data: rs.map(r => r.f1), borderColor: p.amber, tension: .3 },
+      { label: "precision", data: rs.map(r => r.precision), borderColor: p.c1, tension: .3 },
+      { label: "recall", data: rs.map(r => r.recall), borderColor: p.hit, tension: .3 },
+      { label: "F1", data: rs.map(r => r.f1), borderColor: p.c3, tension: .3 },
     ],
   };
   sweepChart = new Chart($("chart-sweep"), {
@@ -493,7 +585,7 @@ async function loadMetrics() {
     const users = (m.per_user ?? []).slice().sort((a, b) => b.tokens_saved - a.tokens_saved);
     $("users-body").innerHTML = users.length ? users.map(u => `
       <tr>
-        <td class="num" title="${esc(u.user_id)}">${esc(u.user_id.slice(0, 12))}…</td>
+        <td class="num mono" title="${esc(u.user_id)}">${esc(u.user_id.slice(0, 12))}…</td>
         <td class="num">${u.total_requests}</td>
         <td class="num">${u.hits}</td>
         <td class="num">${u.tokens_saved.toLocaleString()}</td>
@@ -504,7 +596,7 @@ async function loadMetrics() {
 
     if (splitChart) { splitChart.destroy(); splitChart = null; }
     drawSplit(m);
-  } catch (e) { setDot(false); $("metrics-updated").textContent = "error: " + e.message; }
+  } catch (e) { setDot(false); $("live-text").textContent = "unreachable"; $("metrics-updated").textContent = "error: " + e.message; }
 }
 $("btn-refresh-metrics").onclick = () => { loadMetrics(); loadTrend(); };
 setInterval(() => { if ($("auto-metrics").checked && activeTab === "metrics") { loadMetrics(); loadTrend(); } }, 5000);
@@ -557,7 +649,7 @@ async function loadCache() {
       const ttlPct = expired ? 0 : Math.max(0, Math.min(100, ((e.expires_at - now) / Math.max(1, e.expires_at - e.created_at)) * 100));
       return `
       <tr>
-        <td class="num">${e.entry_id}</td>
+        <td class="num mono">${e.entry_id}</td>
         <td class="prompt-cell" title="${esc(e.prompt_text)}">${esc(e.prompt_text.length > 90 ? e.prompt_text.slice(0, 90) + "…" : e.prompt_text)}</td>
         <td>${esc(e.model_used)}</td>
         <td class="num" title="${new Date(e.created_at * 1000).toLocaleString()}">${fmtAgo(e.created_at)}</td>
