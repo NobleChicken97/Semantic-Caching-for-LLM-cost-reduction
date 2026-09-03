@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,100..900&family=Inter:opsz,wght@14..32,100..900&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- Charts are hand-drawn SVG by the module script below (no chart library). -->
 <style>
   /* ---------- shell tokens (dark-first chrome) ---------- */
   :root, html[data-theme="dark"] {
@@ -159,15 +159,27 @@
   .alertstrip button { margin-left: auto; flex: none; }
   @media (max-width: 900px) { .ov-grid { grid-template-columns: 1fr; } .hero .big { font-size: 64px; } }
 
-  /* ledger */
-  .ledger { margin-top: 14px; padding: 4px 24px; }
-  .lrow { display: flex; align-items: baseline; gap: 14px; padding: 12px 0;
-    border-bottom: 1px solid var(--card-line, var(--border)); }
-  .lrow:last-child { border-bottom: 0; }
-  .lrow .label { font-size: 13px; font-weight: 600; }
-  .lrow .value { margin-left: auto; font-size: 20px; font-weight: 750; letter-spacing: -.01em;
-    text-align: right; white-space: nowrap; }
-  .lrow .cap { font-size: 12px; text-align: right; min-width: 230px; opacity: .75; }
+  /* hero tiles (nested stats, lighter tint) + hand-drawn viz */
+  .hero-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+  .htile { background: rgba(255, 253, 249, .28); border-radius: 16px; padding: 12px 14px; }
+  .htile .lab { font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--card-muted, var(--muted)); }
+  .htile .val { font-size: 24px; font-weight: 800; letter-spacing: -.015em; margin-top: 2px; }
+  .htile .sub { font-size: 11.5px; color: var(--card-muted, var(--muted)); margin-top: 2px; }
+  @media (max-width: 640px) { .hero-tiles { grid-template-columns: 1fr; } }
+  .viz { position: relative; }
+  .viz svg { width: 100%; height: auto; display: block; }
+  .viz text { font-family: Inter, system-ui, sans-serif; }
+  .tip {
+    position: absolute; pointer-events: none; z-index: 5;
+    background: #1e1e1e; color: #f5f1e8; font-size: 12px; font-weight: 600;
+    border-radius: 999px; padding: 5px 12px; white-space: nowrap;
+    transform: translate(-50%, -130%); display: none; box-shadow: var(--shadow);
+  }
+  .tip.on { display: block; }
+  .tbar { cursor: pointer; }
+  .sweep-readout { font-size: 12.5px; color: var(--muted); margin-top: 8px; min-height: 18px; }
+  .sweep-readout b { color: var(--ink); }
 
   .row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
   input[type=text], input[type=number], select {
@@ -222,7 +234,6 @@
   .tune-result .big { font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
   .tune-result .lab { font-size: 12px; font-weight: 650; opacity: .75; }
 
-  canvas { max-height: 240px; }
   @media (max-width: 860px) {
     .shell { flex-direction: column; }
     .side { width: auto; height: auto; position: static; border-right: 0;
@@ -233,8 +244,6 @@
     .side-foot { flex-direction: row; align-items: center; border-top: 0; padding: 8px 2px 0; }
     .side-foot .tuneline { display: none; }
     .hero .big { font-size: 60px; }
-    .lrow { flex-wrap: wrap; }
-    .lrow .cap { min-width: 0; text-align: left; margin-left: auto; }
   }
   @media (prefers-reduced-motion: reduce) {
     .tab.active { animation: none; }
@@ -286,6 +295,11 @@
             <div class="sub"><b>of requests never touched the LLM.</b> <span id="m-hits-cap">–</span></div>
             <div class="meta muted" id="m-req-cap">–</div>
             <div class="meta muted" id="metrics-updated"></div>
+            <div class="hero-tiles">
+              <div class="htile"><div class="lab">Tokens saved</div><div class="val num" id="m-tokens">–</div></div>
+              <div class="htile"><div class="lab">Est. cost saved</div><div class="val num" id="m-cost">–</div><div class="sub">gpt-3.5-turbo pricing</div></div>
+              <div class="htile"><div class="lab">Requests</div><div class="val num" id="m-total">–</div></div>
+            </div>
           </div>
           <div class="bento card-peach">
             <div class="kicker">Speedup · HIT vs MISS</div>
@@ -315,12 +329,7 @@
           <button class="primary" id="btn-refresh-metrics">Refresh now</button>
           <label class="toggle"><input type="checkbox" id="auto-metrics" checked> auto-refresh every 5 s</label>
         </div>
-        <div class="ledger bento" style="background:var(--surface);color:var(--ink)" role="group" aria-label="Savings ledger">
-          <div class="lrow"><span class="label">Tokens never generated again</span><span class="value num" id="m-tokens">–</span></div>
-          <div class="lrow"><span class="label">Requests served</span><span class="value num" id="m-total">–</span></div>
-          <div class="lrow"><span class="label">Est. cost saved</span><span class="value num" id="m-cost">–</span><span class="cap">gpt-3.5-turbo pricing; free models $0</span></div>
-        </div>
-        <div class="panel"><div class="label">Request mix over time (recent log)</div><canvas id="chart-trend" style="max-height:280px"></canvas><div class="hint" id="trend-hint"></div></div>
+        <div class="panel"><div class="label">Request mix over time (recent log)</div><div class="viz" id="trend-wrap"><div id="chart-trend"></div><div class="tip" id="trend-tip"></div></div><div class="hint" id="trend-hint"></div></div>
         <div class="panel">
           <div class="label">Per-user savings</div>
           <table>
@@ -370,7 +379,7 @@
             <tbody id="tune-body"></tbody>
           </table>
         </div>
-        <div class="bento card-peri"><div class="kicker">Precision / recall / F1 by threshold</div><canvas id="chart-sweep"></canvas></div>
+        <div class="bento card-peri"><div class="kicker">Precision / recall / F1 by threshold</div><div class="viz" id="sweep-wrap"><div id="chart-sweep"></div></div><div class="sweep-readout" id="sweep-hover">Hover the curve to inspect a threshold.</div></div>
         <div class="panel">
           <table>
             <thead><tr><th scope="col">Threshold</th><th scope="col">Precision</th><th scope="col">Recall</th><th scope="col">F1</th></tr></thead>
@@ -454,7 +463,7 @@ function paintTheme() {
   const pref = localStorage.getItem("scp-theme") || "dark";
   root.dataset.theme = pref === "system" ? "auto" : pref;
   themeBtn.textContent = "theme: " + pref;
-  rebuildCharts();
+  refreshViz();
 }
 themeBtn.onclick = () => {
   const order = ["dark", "light", "system"];
@@ -463,7 +472,7 @@ themeBtn.onclick = () => {
   paintTheme();
 };
 matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", () => {
-  if ((localStorage.getItem("scp-theme") || "dark") === "system") rebuildCharts();
+  if ((localStorage.getItem("scp-theme") || "dark") === "system") refreshViz();
 });
 
 // ---------- helpers ----------
@@ -486,14 +495,6 @@ async function api(path, opts) {
   return r.json();
 }
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-function palette() {
-  return {
-    text: cssVar("--ink") || "#888", muted: cssVar("--muted") || "#888",
-    grid: cssVar("--border") || "#333",
-    hit: cssVar("--hit"), miss: cssVar("--miss"), flat: cssVar("--flat"),
-    c1: cssVar("--c1"), c2: cssVar("--c2"), c3: cssVar("--c3"),
-  };
-}
 function fmtTime(ts) {
   const d = new Date(ts * 1000);
   return d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
@@ -540,9 +541,22 @@ function arcPath(cx, cy, r, frac) {
   return `M ${sx.toFixed(1)} ${sy.toFixed(1)} A ${r} ${r} 0 ${sweep > 180 ? 1 : 0} 1 ${ex.toFixed(1)} ${ey.toFixed(1)}`;
 }
 const GAUGE_MAX = 50;  // speedup values above this pin the needle; the number stays exact
+let gaugeTicksBuilt = false;
 function drawGauge(speedup) {
   $("gauge-track").setAttribute("d", arcPath(66, 62, 44, 1));
   $("gauge-val").setAttribute("d", arcPath(66, 62, 44, speedup != null ? speedup / GAUGE_MAX : 0));
+  if (!gaugeTicksBuilt) {
+    gaugeTicksBuilt = true;
+    let ticks = "";
+    for (let k = 0; k <= 40; k++) {
+      const a = 150 + 240 * k / 40, major = k % 5 === 0;
+      const [x1, y1] = polar(66, 62, major ? 33 : 36, a);
+      const [x2, y2] = polar(66, 62, 40, a);
+      ticks += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" ` +
+        `stroke="rgba(58,36,16,${major ? 0.55 : 0.28})" stroke-width="${major ? 1.6 : 1}"/>`;
+    }
+    $("gauge").insertAdjacentHTML("afterbegin", `<g>${ticks}</g>`);
+  }
 }
 
 // ---------- tabs ----------
@@ -570,43 +584,132 @@ activateTab(urlTab || "overview");
 if (urlTab === "sweep") runSweep();  // pre-run so the view isn't empty on deep-link
 $("alert-btn").onclick = () => activateTab("logs");
 
-// ---------- charts (rebuilt on theme change from cached payloads) ----------
-let trendChart = null, sweepChart = null;
+// ---------- hand-drawn viz (re-rendered on theme change from cached payloads) ----------
 let lastTrend = null, lastSweep = null;
-function rebuildCharts() {
-  if (trendChart && lastTrend) { trendChart.destroy(); trendChart = null; drawTrend(lastTrend); }
-  if (sweepChart && lastSweep) { sweepChart.destroy(); sweepChart = null; drawSweep(lastSweep); }
+function refreshViz() {
+  if (lastTrend) drawTrend(lastTrend);
+  if (lastSweep) drawSweep(lastSweep);
+}
+// Colors resolved from the chart's own container so card-scoped roles
+// (--card-ink etc.) win on pastel cards and shell roles win elsewhere.
+function boxPalette(box) {
+  const cs = getComputedStyle(box);
+  const g = n => (cs.getPropertyValue(n) || "").trim();
+  return {
+    ink: g("--card-ink") || cssVar("--ink"),
+    muted: g("--card-muted") || cssVar("--muted"),
+    grid: g("--card-line") || cssVar("--border"),
+    hit: "#f2664d", miss: "#e8a13d", flat: "#8e8e96",
+    c1: "#e8e4da", c3: "#e8a13d",
+  };
+}
+function topBar(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h);
+  if (r <= 0) return `M ${x} ${y + h} L ${x + w} ${y + h} L ${x + w} ${y} L ${x} ${y} Z`;
+  return `M ${x} ${y + h} L ${x} ${y + r} Q ${x} ${y} ${x + r} ${y} ` +
+    `L ${x + w - r} ${y} Q ${x + w} ${y} ${x + w} ${y + r} L ${x + w} ${y + h} Z`;
 }
 function drawTrend(t) {
-  const p = palette();
-  const data = {
-    labels: t.labels,
-    datasets: [
-      { label: "HIT", data: t.hits, backgroundColor: p.hit, borderRadius: 4, maxBarThickness: 54 },
-      { label: "MISS", data: t.misses, backgroundColor: p.miss, borderRadius: 4, maxBarThickness: 54 },
-      { label: "other", data: t.other, backgroundColor: p.flat, borderRadius: 4, maxBarThickness: 54 },
-    ],
-  };
-  trendChart = new Chart($("chart-trend"), {
-    type: "bar", data: data,
-    options: { plugins: { legend: { labels: { color: p.muted, boxWidth: 12 } } },
-      scales: { x: { stacked: true, ticks: { color: p.muted, maxTicksLimit: 6 }, grid: { display: false } },
-                y: { stacked: true, ticks: { color: p.muted, precision: 0 }, grid: { color: p.grid } } } },
+  const box = $("chart-trend"), p = boxPalette($("trend-wrap"));
+  const W = 720, H = 250, ML = 36, MR = 12, MT = 12, MB = 30;
+  const iw = W - ML - MR, ih = H - MT - MB, n = t.labels.length;
+  const totals = t.hits.map((h, i) => h + t.misses[i] + t.other[i]);
+  const max = Math.max(1, ...totals);
+  const slot = iw / n, bw = Math.min(54, slot * 0.52);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="stacked request mix chart">` +
+    `<defs><pattern id="tdots" width="7" height="7" patternUnits="userSpaceOnUse">` +
+    `<circle cx="2" cy="2" r="1.1" fill="rgba(0,0,0,.22)"/></pattern></defs>`;
+  for (let g = 0; g <= 4; g++) {
+    const v = max * g / 4, y = MT + ih - ih * g / 4;
+    const lbl = String(Math.round(v * 10) / 10);
+    s += `<line x1="${ML}" y1="${y}" x2="${W - MR}" y2="${y}" stroke="${p.grid}" stroke-width="1" stroke-dasharray="2 5"/>` +
+      `<text x="${ML - 7}" y="${y + 3.5}" text-anchor="end" font-size="10" fill="${p.muted}">${lbl}</text>`;
+  }
+  t.labels.forEach((lab, i) => {
+    const bx = ML + slot * i + (slot - bw) / 2;
+    const vals = [t.hits[i], t.misses[i], t.other[i]];
+    const cols = [p.hit, p.miss, p.flat];
+    let yTop = MT + ih, segs = "";
+    vals.forEach((v, k) => {
+      if (!v) return;
+      const h = v / max * ih;
+      const isTop = vals.slice(k + 1).every(x => !x);
+      segs += `<path d="${topBar(bx, yTop - h, bw, h, isTop ? 5 : 0)}" fill="${cols[k]}"/>`;
+      if (k === 0) segs += `<path d="${topBar(bx, yTop - h, bw, h, isTop ? 5 : 0)}" fill="url(#tdots)"/>`;
+      yTop -= h;
+    });
+    const cx = ML + slot * i + slot / 2;
+    const lx = (i % Math.ceil(n / 6) === 0 || i === n - 1) ? lab : "";
+    s += `<g class="tbar" data-tip="${lab} — ${t.hits[i]} HIT · ${t.misses[i]} MISS${t.other[i] ? " · " + t.other[i] + " other" : ""}" role="img" aria-label="${lab}: ${t.hits[i]} hits, ${t.misses[i]} misses">` +
+      `<rect x="${ML + slot * i}" y="${MT}" width="${slot}" height="${ih}" fill="transparent"/>${segs}` +
+      `<circle cx="${cx}" cy="${H - 8}" r="3" fill="${p.muted}" opacity=".45"/></g>` +
+      (lx ? `<text x="${cx}" y="${H - 14}" text-anchor="middle" font-size="10" fill="${p.muted}">${lx}</text>` : "");
+  });
+  // legend chips (drawn, not library)
+  s += `<g font-size="11" fill="${p.muted}">` +
+    `<rect x="${ML}" y="0" width="9" height="9" rx="2.5" fill="${p.hit}"/><text x="${ML + 13}" y="9">HIT</text>` +
+    `<rect x="${ML + 52}" y="0" width="9" height="9" rx="2.5" fill="${p.miss}"/><text x="${ML + 65}" y="9">MISS</text>` +
+    `<rect x="${ML + 116}" y="0" width="9" height="9" rx="2.5" fill="${p.flat}"/><text x="${ML + 129}" y="9">other</text></g>`;
+  box.innerHTML = s + "</svg>";
+  const tip = $("trend-tip"), wrap = $("trend-wrap");
+  box.querySelectorAll(".tbar").forEach(g => {
+    g.addEventListener("mousemove", ev => {
+      const r = wrap.getBoundingClientRect();
+      tip.style.left = (ev.clientX - r.left) + "px";
+      tip.style.top = (ev.clientY - r.top) + "px";
+      tip.textContent = g.dataset.tip;
+      tip.classList.add("on");
+    });
+    g.addEventListener("mouseleave", () => tip.classList.remove("on"));
   });
 }
 function drawSweep(rs) {
-  const p = palette();
-  const data = {
-    labels: rs.map(r => r.threshold.toFixed(2)),
-    datasets: [
-      { label: "precision", data: rs.map(r => r.precision), borderColor: p.c1, tension: .3 },
-      { label: "recall", data: rs.map(r => r.recall), borderColor: p.hit, tension: .3 },
-      { label: "F1", data: rs.map(r => r.f1), borderColor: p.c3, tension: .3 },
-    ],
+  const box = $("chart-sweep"), p = boxPalette($("sweep-wrap"));
+  const W = 720, H = 250, ML = 36, MR = 14, MT = 16, MB = 30;
+  const iw = W - ML - MR, ih = H - MT - MB;
+  const X = i => ML + iw * i / (rs.length - 1), Y = v => MT + ih * (1 - v);
+  let best = 0;
+  rs.forEach((r, i) => { if (r.f1 > rs[best].f1) best = i; });
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="precision recall F1 by threshold">`;
+  [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+    s += `<line x1="${ML}" y1="${Y(v)}" x2="${W - MR}" y2="${Y(v)}" stroke="${p.grid}" stroke-width="1" stroke-dasharray="2 5"/>` +
+      `<text x="${ML - 7}" y="${Y(v) + 3.5}" text-anchor="end" font-size="10" fill="${p.muted}">${v.toFixed(2)}</text>`;
+  });
+  const bx = X(best);
+  s += `<line x1="${bx}" y1="${MT - 4}" x2="${bx}" y2="${MT + ih}" stroke="${p.ink}" stroke-width="1.2" stroke-dasharray="5 4" opacity=".65"/>` +
+    `<text x="${bx}" y="${MT - 8}" text-anchor="middle" font-size="10" font-weight="700" fill="${p.ink}">best ${rs[best].threshold.toFixed(2)}</text>`;
+  const series = [
+    { key: "precision", color: p.c1, width: 2 }, { key: "recall", color: p.hit, width: 2.5 }, { key: "F1", color: p.c3, width: 2.5 },
+  ];
+  series.forEach(sr => {
+    s += `<polyline points="${rs.map((r, i) => `${X(i).toFixed(1)},${Y(r[sr.key]).toFixed(1)}`).join(" ")}" ` +
+      `fill="none" stroke="${sr.color}" stroke-width="${sr.width}" stroke-linejoin="round" stroke-linecap="round"/>`;
+    rs.forEach((r, i) => {
+      s += `<circle class="sdot" data-s="${sr.key}" cx="${X(i).toFixed(1)}" cy="${Y(r[sr.key]).toFixed(1)}" r="3.5" fill="${sr.color}"/>`;
+    });
+  });
+  rs.forEach((r, i) => {
+    s += `<text x="${X(i).toFixed(1)}" y="${H - 12}" text-anchor="middle" font-size="10" fill="${p.muted}">${r.threshold.toFixed(2)}</text>` +
+      `<rect class="spt" data-i="${i}" x="${(X(i) - iw / rs.length / 2).toFixed(1)}" y="${MT}" width="${(iw / rs.length).toFixed(1)}" height="${ih}" fill="transparent"/>`;
+  });
+  s += `<circle id="sweep-ring" r="7" fill="none" stroke="${p.ink}" stroke-width="1.5" visibility="hidden"/>`;
+  const names = { precision: "P", recall: "R", F1: "F1" };
+  s += `<g font-size="11" fill="${p.muted}">` +
+    `<circle cx="${ML}" cy="2" r="3.5" fill="${p.c1}"/><text x="${ML + 10}" y="6">precision</text>` +
+    `<circle cx="${ML + 82}" cy="2" r="3.5" fill="${p.hit}"/><text x="${ML + 92}" y="6">recall</text>` +
+    `<circle cx="${ML + 150}" cy="2" r="3.5" fill="${p.c3}"/><text x="${ML + 160}" y="6">F1</text></g>`;
+  box.innerHTML = s + "</svg>";
+  const ring = box.querySelector("#sweep-ring"), out = $("sweep-hover");
+  const show = i => {
+    const r = rs[i];
+    ring.setAttribute("cx", X(i).toFixed(1));
+    ring.setAttribute("cy", Y(r.f1).toFixed(1));
+    ring.setAttribute("visibility", "visible");
+    out.innerHTML = `t=<b>${r.threshold.toFixed(2)}</b> · P ${r.precision.toFixed(3)} · R ${r.recall.toFixed(3)} · <b>F1 ${r.f1.toFixed(4)}</b>`;
   };
-  sweepChart = new Chart($("chart-sweep"), {
-    type: "line", data: data,
-    options: { scales: { x: { ticks: { color: p.muted }, grid: { color: p.grid } }, y: { min: 0, max: 1, ticks: { color: p.muted }, grid: { color: p.grid } } }, plugins: { legend: { labels: { color: p.muted, boxWidth: 12 } } } },
+  box.querySelectorAll(".spt").forEach(z => {
+    z.addEventListener("mousemove", () => show(parseInt(z.dataset.i, 10)));
+    z.addEventListener("mouseleave", () => { ring.setAttribute("visibility", "hidden"); });
   });
 }
 
@@ -692,7 +795,7 @@ function renderTrend(logs) {
   const sorted = logs.slice().sort((a, b) => a.timestamp - b.timestamp);
   if (!sorted.length) {
     lastTrend = null;
-    if (trendChart) { trendChart.destroy(); trendChart = null; }
+    $("chart-trend").innerHTML = "";
     $("trend-hint").textContent = "No requests in the window yet — trend appears after traffic.";
     return;
   }
@@ -714,7 +817,6 @@ function renderTrend(logs) {
   }
   lastTrend = { labels, hits, misses, other };
   $("trend-hint").textContent = `${sorted.length} recent request${sorted.length === 1 ? "" : "s"} bucketed ×${buckets}.`;
-  if (trendChart) { trendChart.destroy(); trendChart = null; }
   drawTrend(lastTrend);
 }
 
@@ -791,7 +893,6 @@ async function runSweep() {
         <td class="num">${r.f1.toFixed(4)}</td>
       </tr>`).join("");
     staggerIn($("sweep-body"));
-    if (sweepChart) { sweepChart.destroy(); sweepChart = null; }
     drawSweep(rs);
   } catch (e) { $("sweep-error").textContent = e.message; $("sweep-body").innerHTML = `<tr><td colspan="4" class="empty">error: ${esc(e.message)}</td></tr>`; }
   finally { btn.disabled = false; }
