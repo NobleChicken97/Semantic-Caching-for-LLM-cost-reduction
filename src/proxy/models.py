@@ -49,6 +49,20 @@ class ChatCompletionRequest(BaseModel):
         parts = [f"[{m.role}]{m.content}" for m in self.messages]
         return f"[model]{self.model}\n" + "\n".join(parts)
 
+    def embedding_text(self) -> str:
+        """Message-only canonical text: the embedding input (Phase 9).
+
+        Identical join to canonical_prompt() MINUS the ``[model]`` line. A
+        constant model prefix dominates short user text in embedding space
+        and compresses apparent distances between unrelated prompts
+        (measured live: recall 1.0 / precision ~0.45 vs the documented
+        R=0.9375/P=0.7895 tuned on raw strings). Model identity stays in
+        the hash (canonical_prompt) and the ``model_used`` column/filter —
+        the embedding never needed it, and the eval distribution this
+        threshold was tuned on never had it.
+        """
+        return "\n".join(f"[{m.role}]{m.content}" for m in self.messages)
+
 
 # ---------------------------------------------------------------------------
 # Response models (mirror OpenAI shape)

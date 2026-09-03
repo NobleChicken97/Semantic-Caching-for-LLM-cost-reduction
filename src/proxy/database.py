@@ -212,12 +212,17 @@ def init_db() -> None:
         conn.executescript(_SCHEMA_V2)
         _migrate_user_scoping(conn)
 
-        # Composite uniqueness: same hash is fine across users, never twice
-        # for one user. Also serves plain prompt_hash lookups (prefix rule).
+        # Composite uniqueness (Phase 9): one row per (prompt, user, model).
+        # The v2 index keyed (prompt_hash, user_id) because the hash still
+        # carried the model line; message-only hashes collide across models
+        # by design, so the model joins the key. Dropped and recreated
+        # idempotently — safe on fresh, v2, and pre-Phase-7 databases.
+        # Also serves plain prompt_hash lookups (prefix rule).
+        conn.execute("DROP INDEX IF EXISTS idx_cache_hash_user")
         conn.execute(
             """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_cache_hash_user
-                ON cache_entries(prompt_hash, user_id)
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_cache_hash_user_model
+                ON cache_entries(prompt_hash, user_id, model_used)
             """
         )
         conn.execute(

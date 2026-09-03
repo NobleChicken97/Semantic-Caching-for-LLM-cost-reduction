@@ -18,8 +18,17 @@ import numpy as np
 
 from .config import get_settings
 from .database import get_connection
+from .text import entities, fact_types, jaccard, strip_tags
 
 logger = logging.getLogger("proxy")
+
+# Fix B veto band (Phase 9, calibrated in scripts/calibrate_trust.py):
+# the capitalized-entity veto fires only when the pair ALSO shares enough
+# template (Jaccard >= floor). Without the gate, true paraphrases whose
+# entity surfaces differ ("WWII" vs "World War II") would be vetoed —
+# measured recall risk on a labeled positive. The fact-type signal needs no
+# gate: zero labeled positives carry disjoint fact keywords.
+ENTITY_TEMPLATE_FLOOR = 0.2
 
 # Warn only once per process when the semantic scan exceeds the configured
 # entry cap — a slow-degradation tripwire, not a hard failure.
@@ -29,6 +38,35 @@ _scan_limit_warned = False
 def _hash_prompt(prompt: str) -> str:
     """SHA-256 of the canonical prompt string."""
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+
+def entity_veto(query_text: str, candidate_text: str) -> bool:
+    """True when a semantic HIT must be refused (Phase 9, Fix B).
+
+    Two independent signals; either one fires the veto:
+      1. entity swap — both sides carry capitalized tokens with zero
+         intersection (Finland vs France), AND the pair shares enough
+         template (Jaccard >= ENTITY_TEMPLATE_FLOOR) to rule out true
+         paraphrases with aliasing entities ("WWII" vs "World War II").
+      2. fact-type swap — both sides carry fact-type keywords with zero
+         intersection ("capital" vs "population" on the same entity).
+    Both signals require evidence on BOTH sides: single-side absence
+    (math, greetings, typos) can never veto. Role tags are stripped before
+    comparison so the veto sees exactly what calibration measured.
+    Returns False for everything else — the cosine threshold remains the
+    primary gate.
+    """
+    query, candidate = strip_tags(query_text), strip_tags(candidate_text)
+    qe, ce = entities(query), entities(candidate)
+    if (
+        qe
+        and ce
+        and not (qe & ce)
+        and jaccard(query, candidate) >= ENTITY_TEMPLATE_FLOOR
+    ):
+        return True
+    qf, cf = fact_types(query), fact_types(candidate)
+    return bool(qf and cf and not (qf & cf))
 
 
 def _serialize_embedding(vec: np.ndarray) -> bytes:
@@ -177,7 +215,7 @@ def _semantic_lookup(
         # Fetch all non-expired entries that HAVE an embedding
         now = time.time()
         sql = """
-            SELECT entry_id, prompt_embedding, response_json, expires_at
+            SELECT entry_id, prompt_text, prompt_embedding, response_json, expires_at
               FROM cache_entries
              WHERE prompt_embedding IS NOT NULL
                AND expires_at > ?
@@ -202,6 +240,7 @@ def _semantic_lookup(
 
         best_score = -1.0
         best_entry = None
+        best_prompt = None
 
         for row in rows:
             try:
@@ -217,8 +256,19 @@ def _semantic_lookup(
                         "entry_id": row["entry_id"],
                         "response": json.loads(row["response_json"]),
                     }
+                    best_prompt = row["prompt_text"]
 
         if best_entry is None:
+            return None
+
+        # Fix B veto: a cleared threshold is necessary but not sufficient.
+        # Refused hits return MISS (and are logged as MISS) — the candidate
+        # stays stored, so an EXACT repeat still hits via the exact tier.
+        if best_prompt is not None and entity_veto(prompt_text, best_prompt):
+            logger.info(
+                "Semantic HIT vetoed (entity/fact mismatch above threshold %.3f).",
+                best_score,
+            )
             return None
 
         # Update hit stats on the winning entry
@@ -247,9 +297,11 @@ def store(
 ) -> int:
     """Store a new cache entry with its embedding. Returns the new entry_id.
 
-    Scoped to ``user_id``: the same prompt may exist for many users (the
-    composite UNIQUE(prompt_hash, user_id) index enforces one-per-user), and
-    a re-store replaces only that user's entry.
+    Scoped to (``user_id``, ``model_used``): the same prompt may exist for
+    many users and many models (the composite UNIQUE(prompt_hash, user_id)
+    index plus the model filter enforce one row per user per model), and a
+    re-store replaces only that user's entry for that model. Log references
+    to the replaced row are detached first so metrics history survives.
     """
     from .embedding import embed_texts
 
@@ -260,11 +312,20 @@ def store(
 
     conn = get_connection()
     try:
-        # Replace this user's existing entry for this exact prompt hash
-        conn.execute(
-            "DELETE FROM cache_entries WHERE prompt_hash = ? AND user_id = ?",
-            (prompt_hash, user_id),
-        )
+        # Replace this user's existing entry for this exact (prompt, model).
+        # NOTE: prompt_hash is model-free since Phase 9 (message-only text),
+        # so the model predicate is load-bearing here — without it, storing
+        # for model B would delete model A's row and trip the log FK.
+        old = conn.execute(
+            "SELECT entry_id FROM cache_entries "
+            "WHERE prompt_hash = ? AND user_id = ? AND model_used = ?",
+            (prompt_hash, user_id, model_used),
+        ).fetchone()
+        if old is not None:
+            _detach_log_references(conn, "?", (old["entry_id"],))
+            conn.execute(
+                "DELETE FROM cache_entries WHERE entry_id = ?", (old["entry_id"],)
+            )
 
         cursor = conn.execute(
             """

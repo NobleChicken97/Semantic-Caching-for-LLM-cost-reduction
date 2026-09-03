@@ -185,6 +185,13 @@ def _log_failed_request(prompt_text: str, latency_ms: float, user_id: str) -> No
 @router.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(body: ChatCompletionRequest, request: Request):
     prompt = body.canonical_prompt()
+    # Message-only text for everything embedding- or log-related (Phase 9):
+    # the [model] line is hash identity, not meaning — embedding it inflates
+    # every similarity and skews production away from the tuned distribution.
+    # The coalescing lock below deliberately keeps the FULL canonical string
+    # (identical requests share work; the re-check under the lock still
+    # filters by model, so cross-model sharing is impossible).
+    embed_text = body.embedding_text()
     bypass = request.headers.get("X-Cache-Bypass", "false").strip().lower() == "true"
 
     # --- Caller-selected upstream (allowlist-enforced) ---
@@ -241,19 +248,19 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
         except CircuitOpenError as exc:
             elapsed_ms = (time.perf_counter() - t0) * 1000
             logger.error("Upstream LLM call blocked by OPEN circuit on BYPASS: %s", exc)
-            _log_failed_request(prompt, elapsed_ms, user_id)
+            _log_failed_request(embed_text, elapsed_ms, user_id)
             return _circuit_open_response()
         except httpx.HTTPError as exc:  # HTTPStatusError + RequestError base
             elapsed_ms = (time.perf_counter() - t0) * 1000
             logger.error("Upstream LLM call failed on BYPASS: %s", exc)
-            _log_failed_request(prompt, elapsed_ms, user_id)
+            _log_failed_request(embed_text, elapsed_ms, user_id)
             return _upstream_error_response(exc)
         elapsed_ms = (time.perf_counter() - t0) * 1000
         raw_resp["cache_metadata"] = CacheMetadata(
             outcome="BYPASS", similarity_score=None
         ).model_dump()
         log_request(
-            prompt_text=prompt,
+            prompt_text=embed_text,
             outcome="BYPASS",
             latency_ms=elapsed_ms,
             tokens_in=raw_resp.get("usage", {}).get("prompt_tokens", 0),
@@ -264,7 +271,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
 
     # --- Two-tier cache lookup (scoped to the requested model) ---
     t0 = time.perf_counter()
-    cached = lookup(prompt, model=body.model, user_id=user_id)
+    cached = lookup(embed_text, model=body.model, user_id=user_id)
 
     # --- On a miss, coalesce concurrent identical requests before paying
     #     for an upstream call (single-flight per prompt hash). ---
@@ -275,7 +282,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
             async with lock:
                 # Re-check under the lock: another coroutine may have
                 # forwarded and stored this exact prompt while we waited.
-                cached = lookup(prompt, model=body.model, user_id=user_id)
+                cached = lookup(embed_text, model=body.model, user_id=user_id)
                 if cached is None:
                     try:
                         raw_resp, _ = await forward_to_llm(
@@ -289,17 +296,17 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
                         logger.error(
                             "Upstream LLM call blocked by OPEN circuit on MISS: %s", exc
                         )
-                        _log_failed_request(prompt, elapsed_ms, user_id)
+                        _log_failed_request(embed_text, elapsed_ms, user_id)
                         return _circuit_open_response()
                     except httpx.HTTPError as exc:
                         elapsed_ms = (time.perf_counter() - t0) * 1000
                         logger.error("Upstream LLM call failed on MISS: %s", exc)
-                        _log_failed_request(prompt, elapsed_ms, user_id)
+                        _log_failed_request(embed_text, elapsed_ms, user_id)
                         return _upstream_error_response(exc)
                     elapsed_ms = (time.perf_counter() - t0) * 1000
 
                     # Store in cache (with embedding now)
-                    entry_id = store(prompt, raw_resp, body.model, user_id=user_id)
+                    entry_id = store(embed_text, raw_resp, body.model, user_id=user_id)
 
                     raw_resp["cache_metadata"] = CacheMetadata(
                         outcome="MISS", similarity_score=None
@@ -307,7 +314,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
 
                     cost = _estimate_cost(raw_resp)
                     log_request(
-                        prompt_text=prompt,
+                        prompt_text=embed_text,
                         outcome="MISS",
                         latency_ms=elapsed_ms,
                         matched_entry_id=entry_id,
@@ -338,7 +345,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
     ).model_dump()
 
     log_request(
-        prompt_text=prompt,
+        prompt_text=embed_text,
         outcome="HIT",
         latency_ms=elapsed_ms,
         matched_entry_id=cached["entry_id"],

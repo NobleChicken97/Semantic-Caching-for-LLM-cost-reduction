@@ -824,10 +824,11 @@ class TestCacheEntriesEndpoint:
         assert resp.status_code == 200
         entries = resp.json()["entries"]
         assert len(entries) == 2
-        # Stored prompts are canonicalized with [model] + [role] prefixes
+        # Stored prompts are message-only canonical text (Phase 9: the [model]
+        # line is hash identity, not embedding input — see embedding_text()).
         assert {e["prompt_text"] for e in entries} == {
-            "[model]gpt-3.5-turbo\n[user]What is the capital of France?",
-            "[model]gpt-3.5-turbo\n[user]What is the boiling point of water?",
+            "[user]What is the capital of France?",
+            "[user]What is the boiling point of water?",
         }
         for e in entries:
             assert set(e.keys()) == {

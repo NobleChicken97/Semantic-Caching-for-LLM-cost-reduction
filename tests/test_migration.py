@@ -92,7 +92,9 @@ class TestUserScopingMigration:
             assert log_row["user_id"] == "local"
             assert log_row["outcome"] == "HIT"  # data survived intact
 
-            # Composite uniqueness: same hash again for 'local' is rejected...
+            # Composite uniqueness (Phase 9: prompt_hash is model-free, so the
+            # key is (prompt_hash, user_id, model_used)). Same triple again
+            # for 'local' is rejected (legacy row uses model gpt-3.5-turbo)...
             with pytest.raises(sqlite3.IntegrityError):
                 conn.execute(
                     """
@@ -101,9 +103,9 @@ class TestUserScopingMigration:
                          user_id, created_at, expires_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    ("dup", "deadbeef", "{}", "m", "local", 3.0, 4.0),
+                    ("dup", "deadbeef", "{}", "gpt-3.5-turbo", "local", 3.0, 4.0),
                 )
-            # ...but the SAME hash is allowed for a DIFFERENT user.
+            # ...but the SAME hash is allowed for a DIFFERENT user...
             conn.execute(
                 """
                 INSERT INTO cache_entries
@@ -112,6 +114,16 @@ class TestUserScopingMigration:
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 ("dup", "deadbeef", "{}", "m", "someone-else", 3.0, 4.0),
+            )
+            # ...and for the SAME user under a DIFFERENT model.
+            conn.execute(
+                """
+                INSERT INTO cache_entries
+                    (prompt_text, prompt_hash, response_json, model_used,
+                     user_id, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("dup", "deadbeef", "{}", "other-model", "local", 3.0, 4.0),
             )
         finally:
             conn.close()
@@ -146,7 +158,10 @@ class TestUserScopingMigration:
                     r[1]
                     for r in conn.execute("PRAGMA index_list(cache_entries)").fetchall()
                 }
-                assert "idx_cache_hash_user" in indexes
+                assert "idx_cache_hash_user_model" in indexes
+                # The pre-Phase-9 two-column index must be gone: it would
+                # reject legitimate same-prompt-different-model rows.
+                assert "idx_cache_hash_user" not in indexes
             finally:
                 conn.close()
         finally:

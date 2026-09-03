@@ -88,7 +88,14 @@ The two lost directories are restored, the working tree is verified end-to-end (
 
 - [ ] **🟠 P1** **Deep adversarial battery (2026-09-04).** Owner asked for ground-truth testing beyond metrics, esp. cross-entity false hits (Finland served France's answer).
   - [x] S1 `scripts/Test-SemCache-Deep.ps1`: Phase A labeled-set validation (31 pairs verbatim, B-only asserts, clean-room purge + borderline cross-check with `-AdminToken`), Phase B entity-substitution spotlight (Finland/Norway/Japan capitals, population, currency), Phase C 12-prompt real-life session with score, Phase D robustness; syntax-checked
-  - [ ] S2 Commit + push → owner runs `powershell -ExecutionPolicy Bypass -File scripts\Test-SemCache-Deep.ps1 [-AdminToken ...]` and pastes output
+  - [x] S2 Commit + push → owner runs `powershell -ExecutionPolicy Bypass -File scripts\Test-SemCache-Deep.ps1 [-AdminToken ...]` and pastes output
+
+- [ ] **🟥 P0** **Semantic-trust fixes (2026-09-04).** Deep battery found: (1) eval/prod distribution skew — threshold tuned on raw strings, production embeds `"[model]…\n[user]…"`-prefixed text (recall 1.0 / precision ~0.45 live vs doc R=0.9375/P=0.7895); (2) single-entity substitution hits (Finland 0.87 / Norway 0.90 / Japan 0.87 / population 0.91) — would serve wrong-country answers with a real upstream.
+  - [x] F1 FIX A: message-only `embedding_text()` wired into lookup/store/log; canonical hash untouched; cross-model isolation via `model_used` (caught + fixed real FK/unique-index bugs the prefix removal exposed)
+  - [x] F2 FIX B: two-signal veto (entity disjoint + template gate 0.2; fact-keyword disjoint ungated) — calibrated table proves zero recall risk (pair-7 alias case saved by the gate)
+  - [x] F3 FIX C DROPPED WITH EVIDENCE: Jaccard table (3 positives at 0.000) + post-Fix-A sims (username 0.807, thanks 0.841 both MISS on threshold) prove no floor is safe or needed
+  - [ ] F4 Verify: 162/162 pytest green; sweep byte-identical (0.85 F1=0.8571); calibration re-run confirms shipped veto table → commit/push → CI → deploy → purge → live deep-battery → docs
+  - STATUS 2026-09-04: owner reviewed plan, added two-signal B + Fix C + limitations-list items. Building F1+F2 now; F3 mechanism after calibration numbers.
 
 - [ ] **🟠 P1** **Custom domain `semcache.noblechicken.me` (Namecheap → Lightsail → Caddy auto-HTTPS).** Tracked sub-todos:
   - [x] D1 Namecheap A record `semcache` → `98.95.205.92` (owner done; verified propagating via recursive + direct lookup)
