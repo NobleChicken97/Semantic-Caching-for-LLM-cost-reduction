@@ -27,6 +27,14 @@
 
 ---
 
+## 2026-09-04 — Battery methodology war + template-sensitivity measurement
+
+Three test-harness artifacts found and killed, each masquerading as product behavior: (1) shared run-id/family suffixes across prompts inflate cross-similarities (v1 T3, burst groups); (2) PowerShell 5.1 silently empties a bare $var directly before "?" (`"of $c?"` sent truncated text - proven by isolated repro, fixed with concat/${}); (3) reruns without clean-room purges compare against last run's templates. Standing rule now: prompts carry zero artificial tokens; freshness comes from per-group purges (-AdminToken); exact repeats reuse identical variables.
+
+Also resolved: identical 6dp sims across runs are deterministic recomputation (same texts in, same sims out - verified), not staleness; short-phrase "collapse" and the emoji-attractor sightings were suffix artifacts (clean retests MISS correctly); the degenerate-candidate skip stays as cheap insurance with corrected provenance. Genuine residue, measured clean: same-template/different-topic cross-hits 4/20 (sourdough/composting/tidal/fermentation at 0.851-0.879), order-swap 0.985, antonym 0.944 - reported, not gated. Local-vs-host model drift noted (same texts differ ~0.04 between fresh Hub weights and baked image weights - re-bake image on next base refresh).
+
+---
+
 ## 2026-09-04 — Phase 9 semantic-trust fixes (shipped, live-verified)
 
 Owner's deep battery (`scripts/Test-SemCache-Deep.ps1`) found two defects: (1) eval/prod skew — threshold tuned on raw strings, production embedded `"[model]…\n[user]…"` text (live R=1.0/P~0.45 vs doc 0.9375/0.7895); (2) single-entity swaps HIT (Finland 0.87, Norway 0.90, Japan 0.87, population 0.91).

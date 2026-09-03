@@ -221,7 +221,6 @@ $topics = @(
 )
 $recs = @()
 $missAll = $true
-$hitTopics = @()
 for ($i = 0; $i -lt 20; $i++) {
     $t0 = Get-Date
     $r = Ask "Write two sentences about $($topics[$i])."
@@ -236,6 +235,7 @@ for ($i = 0; $i -lt 20; $i++) {
 # crater recall — so report, don't assert.
 $tmplHits = $recs | Where-Object { $_.out -ne "MISS" } | ForEach-Object { "$($_.topic)=$($_.out) $($_.sim)" }
 if ($tmplHits.Count -gt 0) { Observe "K template cross-hits (measured residue)" ($tmplHits -join " | ") }
+$lats = $recs | ForEach-Object { $_.ms }
 $srt = $lats | Sort-Object
 $avg = [math]::Round(($lats | Measure-Object -Average).Average, 1)
 $p95 = [math]::Round($srt[[math]::Min(19, [int](0.95 * 20))], 1)
