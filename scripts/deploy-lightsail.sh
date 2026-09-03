@@ -21,11 +21,11 @@ docker compose pull app || docker compose build app
 docker compose up -d
 docker image prune -f
 
-echo "==> waiting for /health (max ~3 min incl. cold model load)"
+echo "==> waiting for /health via Caddy :80 (max ~3 min incl. cold model load)"
 for i in $(seq 1 36); do
-  if curl -fsS http://127.0.0.1:8000/health | grep -q '"status":"ok"'; then
+  if curl -fsS http://127.0.0.1/health | grep -q '"status":"ok"'; then
     echo "HEALTHY after ~$((i * 5))s"
-    curl -s http://127.0.0.1:8000/health
+    curl -s http://127.0.0.1/health
     echo
     docker compose ps
     exit 0

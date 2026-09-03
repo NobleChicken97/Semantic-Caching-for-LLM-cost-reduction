@@ -34,6 +34,13 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # The Caddyfile uses a {$DOMAIN} placeholder, which reads the caddy
+    # PROCESS env — env_file on `app` does NOT propagate here, so DOMAIN
+    # must be passed explicitly (else Caddy sees a keyless block and dies).
+    # Value comes from the project .env, which compose auto-loads for
+    # interpolation (provision script defaults it to `localhost`).
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
