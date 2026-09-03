@@ -1,16 +1,19 @@
 # Caddy reverse proxy for the Lightsail host.
 #
-# DOMAIN is set in /srv/semcache/app/.env:
-#   - Pre-DNS stage: leave DOMAIN unset (or DOMAIN=localhost). The :80 block
-#     below serves the static IP over plain HTTP. Caddy will log a harmless
-#     background cert error for the empty/localhost site; :80 keeps working.
-#   - Post-DNS stage: set DOMAIN=semcache.noblechicken.me,
-#     `docker compose up -d caddy`, and this same file provisions Let's
-#     Encrypt certs automatically (no cert commands, no renewals to manage).
-
-:80 {
-	reverse_proxy app:8000
-}
+# Single domain block ONLY — this is deliberate. Caddy's automatic HTTPS
+# (docs: A record + ports 80/443 open + domain in config + persistent data
+# dir) needs uncontested ownership of the challenge path. A catch-all :80
+# reverse-proxy would swallow the ACME HTTP-01 challenge into the app (404)
+# and break first issuance, so there is intentionally no :80 block here.
+# Direct-IP access is retired: http://<static-ip>/ has no site and 404s;
+# use https://semcache.noblechicken.me everywhere (interview links, monitors).
+#
+# DOMAIN comes from /srv/semcache/app/.env (never committed):
+#   DOMAIN=semcache.noblechicken.me
+# After any Caddyfile/compose change: `docker compose up -d caddy` (or push —
+# the deploy workflow pulls and restarts). Certs issue on first boot after
+# DNS propagates and renew forever; watch `docker compose logs caddy` for
+# "certificate obtained".
 
 {$DOMAIN} {
 	reverse_proxy app:8000
