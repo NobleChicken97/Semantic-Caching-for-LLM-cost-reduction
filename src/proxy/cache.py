@@ -376,8 +376,14 @@ def _delete_entry(conn, entry_id: int) -> None:
     conn.commit()
 
 
-def purge(entry_id: int | None = None) -> int:
-    """Purge a single entry or the entire cache. Returns count deleted."""
+def purge(entry_id: int | None = None, *, actor: str = "admin") -> int:
+    """Purge a single entry or the entire cache. Returns count deleted.
+
+    Writes one audit row (timestamp, count, scope, actor) in the same
+    transaction so "who purged, when" is always answerable. ``actor`` is
+    the caller IP recorded by the route — there is a single admin token,
+    so IP is the best available identity (documented, not oversold).
+    """
     conn = get_connection()
     try:
         if entry_id is not None:
@@ -388,8 +394,27 @@ def purge(entry_id: int | None = None) -> int:
         else:
             conn.execute("UPDATE request_log SET matched_entry_id = NULL")
             cursor = conn.execute("DELETE FROM cache_entries")
+        purged = cursor.rowcount
+        conn.execute(
+            "INSERT INTO purge_audit (timestamp, purged_count, entry_id, actor)"
+            " VALUES (?, ?, ?, ?)",
+            (time.time(), purged, entry_id, actor),
+        )
         conn.commit()
-        return cursor.rowcount
+        return purged
+    finally:
+        conn.close()
+
+
+def last_purge() -> dict[str, Any] | None:
+    """Newest purge-audit row, or None when nothing was ever purged."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT timestamp, purged_count, entry_id, actor FROM purge_audit"
+            " ORDER BY audit_id DESC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row is not None else None
     finally:
         conn.close()
 
@@ -575,6 +600,11 @@ def get_metrics() -> dict[str, Any]:
         ).fetchall()
         per_user = [dict(row) for row in per_user_rows]
 
+        audit = conn.execute(
+            "SELECT timestamp, purged_count, entry_id, actor FROM purge_audit"
+            " ORDER BY audit_id DESC LIMIT 1"
+        ).fetchone()
+
         return {
             "hit_rate": round(hit_rate, 4),
             "total_requests": total,
@@ -583,6 +613,7 @@ def get_metrics() -> dict[str, Any]:
             "avg_latency_miss_ms": round(miss_lat, 2),
             "total_tokens_saved": int(tokens_saved),
             "per_user": per_user,
+            "last_purge": dict(audit) if audit is not None else None,
         }
     finally:
         conn.close()

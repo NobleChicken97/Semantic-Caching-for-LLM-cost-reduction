@@ -127,6 +127,8 @@ class MetricsResponse(BaseModel):
     # Phase 7 headline metric + per-user breakdown.
     total_tokens_saved: int = 0
     per_user: list[UserUsage] = []
+    # Phase 9.6: newest purge-audit row (None when never purged).
+    last_purge: PurgeAudit | None = None
 
 
 class PurgeRequest(BaseModel):
@@ -135,6 +137,15 @@ class PurgeRequest(BaseModel):
 
 class PurgeResponse(BaseModel):
     purged_count: int
+
+
+class PurgeAudit(BaseModel):
+    """One recorded purge action (Phase 9.6): who, when, what scope."""
+
+    timestamp: float
+    purged_count: int = 0
+    entry_id: int | None = None
+    actor: str = "admin"
 
 
 class ThresholdSweepRequest(BaseModel):

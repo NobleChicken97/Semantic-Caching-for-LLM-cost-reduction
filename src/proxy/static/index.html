@@ -391,6 +391,7 @@
           <input type="text" id="cache-search" placeholder="Search prompts…" aria-label="Search cached prompts">
           <button class="small" id="btn-reload-cache">Reload</button>
           <span style="flex:1"></span>
+          <span class="muted" id="purge-state" style="font-size:12px"></span>
           <button class="danger" id="btn-purge-all">Purge ALL</button>
         </div>
         <div class="err" id="cache-error"></div>
@@ -627,7 +628,7 @@ function activateTab(name) {
   activeTab = name;
   api("/health").then(() => setDot(true)).catch(() => setDot(false));  // sidebar dot stays honest on deep-links too
   if (activeTab === "overview") loadOverview();
-  if (activeTab === "cache") loadCache();
+  if (activeTab === "cache") { loadCache(); refreshPurgeState(); }
   if (activeTab === "logs") loadLogs();
 }
 document.querySelectorAll("nav.side-nav button").forEach(b => { b.onclick = () => activateTab(b.dataset.tab); });
@@ -772,6 +773,11 @@ async function loadOverview() {
     countUp($("m-hitrate"), (m.hit_rate ?? 0) * 100, v => v.toFixed(1) + " %");
     $("m-hits-cap").textContent = `${hits} HIT · ${misses} MISS`;
     $("m-req-cap").textContent = `${m.total_requests} requests · ${hits} served from cache · updated ${new Date().toLocaleTimeString()}`;
+    const lp = m.last_purge;
+    $("purge-state").textContent = !lp ? "never purged"
+      : `last purge ${new Date(lp.timestamp * 1000).toLocaleString()} · ` +
+        `${lp.purged_count} entr${lp.purged_count === 1 ? "y" : "ies"}` +
+        (lp.entry_id != null ? ` (#${lp.entry_id})` : "") + ` · by ${lp.actor}`;
     countUp($("m-tokens"), tokens, v => Math.round(v).toLocaleString());
     countUp($("m-total"), m.total_requests ?? 0, v => String(Math.round(v)));
     $("m-cost").textContent = "$" + (m.estimated_cost_saved_usd ?? 0).toFixed(4);
@@ -866,6 +872,16 @@ function renderTrend(logs) {
 
 // ---------- cache browser ----------
 let cacheTimer = null;
+async function refreshPurgeState() {
+  try {
+    const m = await api("/metrics");
+    const lp = m.last_purge;
+    $("purge-state").textContent = !lp ? "never purged"
+      : `last purge ${new Date(lp.timestamp * 1000).toLocaleString()} · ` +
+        `${lp.purged_count} entr${lp.purged_count === 1 ? "y" : "ies"}` +
+        (lp.entry_id != null ? ` (#${lp.entry_id})` : "") + ` · by ${lp.actor}`;
+  } catch (e) { $("purge-state").textContent = ""; }
+}
 async function loadCache() {
   const q = $("cache-search").value.trim();
   $("cache-error").textContent = "";
@@ -904,6 +920,7 @@ async function purgeOne(id) {
   try {
     await api("/cache/purge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entry_id: id }) });
     loadCache();
+    loadOverview();
   } catch (e) { $("cache-error").textContent = e.message; }
 }
 async function purgeAll() {
@@ -912,6 +929,7 @@ async function purgeAll() {
   try {
     await api("/cache/purge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
     loadCache();
+    loadOverview();
   } catch (e) { $("cache-error").textContent = e.message; }
 }
 $("btn-purge-all").onclick = purgeAll;

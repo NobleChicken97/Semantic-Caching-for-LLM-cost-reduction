@@ -46,6 +46,8 @@ need = [
     "trend-tip",
     "sweep-hover",
     "alert-strip",
+    'id="purge-state"',
+    "last_purge",
     'id="ambient"',
     "theme-ico-moon",
     "navtext",

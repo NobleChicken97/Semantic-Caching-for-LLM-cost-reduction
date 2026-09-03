@@ -96,7 +96,13 @@ The two lost directories are restored, the working tree is verified end-to-end (
   - [x] F3 FIX C DROPPED WITH EVIDENCE: Jaccard table (3 positives at 0.000) + post-Fix-A sims (username 0.807, thanks 0.841 both MISS on threshold) prove no floor is safe or needed
   - [x] F4 Verify: 162/162 pytest green; sweep byte-identical (0.85 F1=0.8571); calibration re-run confirms shipped veto table → commit/push → CI → deploy → purge → live deep-battery → docs
   - [x] F5 Live battery (owner run + my re-run with token): recall 15/16 = doc exactly; precision 0.82 (beats doc 0.79); spotlight all-MISS; session 10/11 (thanks/greeting 0.851 = 1/1000th over bar, named residue). Mystery null matched_entry_ids forensically solved: a full purge fired mid-battery (detached refs by design, zero orphans) — almost certainly a dashboard Purge ALL click during the run, not a product bug.
-  - [ ] F6 Follow-up (small): audit-trail the purge endpoint (who/when log line + "last purged" on dashboard) so the next forensics takes seconds, not an hour
+  - [x] F6 Follow-up DONE: purge audit trail (actor+timestamp log line, `purge_audit` table, `last_purge` in /metrics + dashboard line with tab-activation refresh) + 3 tests; 165/165 pytest green
+  - [x] Snapshot `semcache-20260904` initiated (pending → completes on its own)
+
+- [ ] **🟥 P0** **Mega-battery v2 (2026-09-04).** Owner asked for wider variety + edge cases + run + analyze + fix.
+  - [ ] G1 Write `scripts/Test-SemCache-Deep2.ps1` (multilingual, negations, numbers/dates, code pairs, injection/XSS observe, emoji, whitespace/unicode/case, roles, multi-turn, long-word, model/temperature/provider invariance, concurrency coalescing, burst latency)
+  - [ ] G2 Run live with token, analyze results, fix real issues (no fix for observe-only surprises — document)
+  - [ ] G3 Verify (pytest if backend touched, ruff) → commit/push → docs
   - STATUS 2026-09-04: owner reviewed plan, added two-signal B + Fix C + limitations-list items. Building F1+F2 now; F3 mechanism after calibration numbers.
 
 - [ ] **🟠 P1** **Custom domain `semcache.noblechicken.me` (Namecheap → Lightsail → Caddy auto-HTTPS).** Tracked sub-todos:

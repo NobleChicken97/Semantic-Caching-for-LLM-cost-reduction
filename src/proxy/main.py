@@ -170,8 +170,16 @@ async def metrics():
     response_model=PurgeResponse,
     dependencies=[Depends(require_admin_token)],
 )
-async def cache_purge(body: PurgeRequest):
-    count = purge(entry_id=body.entry_id)
+async def cache_purge(body: PurgeRequest, request: Request):
+    actor = request.client.host if request.client else "unknown"
+    count = purge(entry_id=body.entry_id, actor=actor)
+    logger.info(
+        "Cache purge by %s: %d entr%s (entry_id=%s).",
+        actor,
+        count,
+        "y" if count == 1 else "ies",
+        body.entry_id,
+    )
     return PurgeResponse(purged_count=count)
 
 

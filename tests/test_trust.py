@@ -275,3 +275,58 @@ class TestTrustThroughRoute:
         resp = await client.get("/logs/recent?limit=5")
         outcomes = [r["outcome"] for r in resp.json()["logs"]]
         assert "MISS" in outcomes
+
+
+class TestPurgeAudit:
+    def test_purge_writes_audit_row(self, monkeypatch, tmp_path):
+        import sqlite3
+
+        from proxy.cache import last_purge, purge, store
+        from proxy.config import get_settings
+        from proxy.database import init_db
+
+        monkeypatch.setenv("CACHE_DB_PATH", str(tmp_path / "audit.db"))
+        get_settings.cache_clear()
+        try:
+            init_db()
+            assert last_purge() is None
+            eid = store("[user]audit me", {"ok": True}, "gpt-3.5-turbo")
+            assert purge(entry_id=eid, actor="tester") == 1
+            row = last_purge()
+            assert row["purged_count"] == 1
+            assert row["entry_id"] == eid
+            assert row["actor"] == "tester"
+            assert row["timestamp"] > 0
+        finally:
+            get_settings.cache_clear()
+
+    def test_full_purge_audit_defaults(self, monkeypatch, tmp_path):
+        from proxy.cache import last_purge, purge
+        from proxy.config import get_settings
+        from proxy.database import init_db
+
+        monkeypatch.setenv("CACHE_DB_PATH", str(tmp_path / "audit2.db"))
+        get_settings.cache_clear()
+        try:
+            init_db()
+            assert purge() == 0
+            row = last_purge()
+            assert row["purged_count"] == 0
+            assert row["entry_id"] is None
+            assert row["actor"] == "admin"
+        finally:
+            get_settings.cache_clear()
+
+    @pytest.mark.asyncio
+    async def test_metrics_carries_last_purge(self, client):
+        await client.post("/v1/chat/completions", json=_france())
+        resp = await client.get("/metrics")
+        assert resp.json()["last_purge"] is None
+        purge_resp = await client.post("/cache/purge", json={})
+        assert purge_resp.status_code == 200
+        m = (await client.get("/metrics")).json()
+        assert m["last_purge"]["purged_count"] == 1
+        assert m["last_purge"]["entry_id"] is None
+        # ASGI transport reports the real client IP (127.0.0.1), which is
+        # exactly the identity the route records.
+        assert m["last_purge"]["actor"] == "127.0.0.1"
