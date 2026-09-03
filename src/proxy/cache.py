@@ -244,12 +244,14 @@ def _semantic_lookup(
 
         for row in rows:
             # Degenerate candidates (no content words: ":)", "!!!", ...) are
-            # skipped: short/low-signal prompts collapse onto them because
-            # shared boilerplate dominates their vectors (measured: unrelated
-            # prompts scoring 0.88-0.94 against a ":)" entry). Exact-tier
-            # repeats still hit — only the semantic tier ignores them. All
-            # labeled cache entries carry >=1 content word, so recall cost
-            # is zero by construction (verified in tests/test_trust.py).
+            # skipped: they carry no meaning to match, so any semantic hit
+            # against them is noise by construction. Exact-tier repeats
+            # still hit — only the semantic tier ignores them. Defense in
+            # depth: no live false-hit against such an entry has ever been
+            # observed (an early 0.88-0.94 sighting turned out to be shared
+            # test-suffix tokens, not the entry), but the rule costs nothing
+            # and labeled recall provably cannot regress (all labeled cache
+            # entries carry >=1 content word — see tests/test_trust.py).
             if not content_words(strip_tags(row["prompt_text"] or "")):
                 continue
             try:
