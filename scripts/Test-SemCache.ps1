@@ -21,6 +21,12 @@ $ErrorActionPreference = "Stop"
 $script:pass = 0
 $script:fail = 0
 $RunId = Get-Date -Format "HHmmss"
+# Distinct suffix per prompt FAMILY. Same suffix inside a paraphrase pair
+# preserves the match condition; different suffixes across unrelated prompts
+# avoid inflating similarity with shared tokens (a flaw the first version had
+# that turned T3 into a false alarm).
+$S1 = "p$RunId-a"; $S2 = "p$RunId-b"; $S3 = "p$RunId-c"
+$S4 = "p$RunId-d"; $S5 = "p$RunId-e"; $S6 = "p$RunId-f"; $S7 = "p$RunId-g"
 
 function Ask([string]$prompt, [string]$model = "gpt-3.5-turbo", [bool]$bypass = $false) {
     $body = @{ model = $model; messages = @(@{ role = "user"; content = $prompt }) } |
@@ -52,37 +58,37 @@ function Observe([string]$name, $value) {
 }
 
 Write-Host "== T1 exact MISS then HIT =="
-$p1 = "What eats deep-sea vents at run $RunId?"
+$p1 = "What eats deep-sea vents at run $S1?"
 Check "T1 fresh prompt is MISS" (Ask $p1).meta.outcome "MISS"
 $r = Ask $p1
 Check "T1 repeat is HIT" $r.meta.outcome "HIT"
-Check "T1 exact similarity is 1.0" $r.meta.similarity_score 1
+Check "T1 exact similarity is 1.0" ([double]$r.meta.similarity_score -eq 1.0) "True"
 
 Write-Host "== T2 paraphrase HIT =="
-$p1b = "Which creatures feed at deep-sea vents in run $RunId?"
+$p1b = "Which creatures feed at deep-sea vents in run $S1?"
 $r = Ask $p1b
 Check "T2 paraphrase is HIT" $r.meta.outcome "HIT"
 $simOk = ($r.meta.similarity_score -ge 0.85) -and ($r.meta.similarity_score -lt 1.0)
 Check "T2 similarity in [0.85, 1.0)" $simOk "True"
 
 Write-Host "== T3 different intent is MISS =="
-Check "T3 capital is MISS" (Ask "What is the capital of Japan ($RunId)?").meta.outcome "MISS"
-Check "T3 population is MISS" (Ask "What is the population of Japan ($RunId)?").meta.outcome "MISS"
+Check "T3 capital is MISS" (Ask "What is the capital of Japan ($S3)?").meta.outcome "MISS"
+Check "T3 population is MISS" (Ask "What is the population of Japan ($S4)?").meta.outcome "MISS"
 
 Write-Host "== T4 threshold boundary =="
-Check "T4 arithmetic is MISS" (Ask "What is 2 + 2 ($RunId)?").meta.outcome "MISS"
-$r = Ask "Calculate two plus two ($RunId)."
+Check "T4 arithmetic is MISS" (Ask "What is 2 + 2 ($S5)?").meta.outcome "MISS"
+$r = Ask "Calculate two plus two ($S5)."
 Check "T4 near-paraphrase is HIT" $r.meta.outcome "HIT"
 Check "T4 near-paraphrase is not exact" ($r.meta.similarity_score -lt 1.0) "True"
 
 Write-Host "== T5 model isolation =="
-$p5 = "Name a deep-sea fish ($RunId)?"
+$p5 = "Name a deep-sea fish ($S6)?"
 Check "T5 model A is MISS" (Ask $p5 "gpt-3.5-turbo").meta.outcome "MISS"
 Check "T5 same prompt other model is MISS" (Ask $p5 "gpt-4").meta.outcome "MISS"
 Check "T5 model A repeats as HIT" (Ask $p5 "gpt-3.5-turbo").meta.outcome "HIT"
 
 Write-Host "== T6 bypass never poisons =="
-$p6 = "Describe hydrothermal vents ($RunId)."
+$p6 = "Describe hydrothermal vents ($S7)."
 Check "T6 first is MISS" (Ask $p6).meta.outcome "MISS"
 Check "T6 bypass header is BYPASS" (Ask $p6 -bypass $true).meta.outcome "BYPASS"
 Check "T6 post-bypass still HIT" (Ask $p6).meta.outcome "HIT"
