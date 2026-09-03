@@ -7,84 +7,63 @@
 <title>Semantic Cache Proxy — Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,100..900&family=Inter:opsz,wght@14..32,100..900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
-  /* ---------- Watermelon-lane tokens (OKLCH roles ported from their public index.css) ---------- */
-  :root {
-    --bg: oklch(1 0 0); --surface: oklch(1 0 0); --surface2: oklch(0.967 0.001 286.375);
-    --ink: oklch(0.145 0 0); --muted: oklch(0.45 0 0); --border: oklch(0.922 0 0);
-    --lime: oklch(76.8% 0.233 130.85); --on-lime: oklch(0.25 0.02 130);
-    --hero: #3f6212;
-    --hit-bg: #ecfccb; --hit-ink: #3f6212;
-    --miss-bg: #fef3c7; --miss-ink: #92400e;
-    --bad-bg: #fee2e2; --bad-ink: #991b1b;
-    --flat-bg: #ececea; --flat-ink: #57575e;
-    --c1: #eab308; --c2: #d97706; --c3: #ea580c; --c4: #c2410c; --c5: #9a3412;
-    --hit: #65a30d; --miss: #d97706; --flat: #a1a1aa;
-    --radius: 10px; --shadow: 0 1px 2px rgba(20, 20, 25, .07);
+  /* ---------- shell tokens (dark-first chrome) ---------- */
+  :root, html[data-theme="dark"] {
+    --bg: #1b1b1e; --surface: #242428; --surface2: #2e2e34; --border: rgba(245, 241, 232, .12);
+    --ink: #f5f1e8; --muted: #a8a49a; --cream: #f5f1e8;
+    --hit: #f2664d; --miss: #e8a13d; --flat: #8e8e96;
+    --c1: #e8e4da; --c2: #f2664d; --c3: #e8a13d;
+    --radius: 10px; --card-radius: 28px; --shadow: 0 2px 8px rgba(0, 0, 0, .35);
     --spring: cubic-bezier(.16, 1, .3, 1);
-    --font: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   html[data-theme="light"] {
-    --bg: oklch(1 0 0); --surface: oklch(1 0 0); --surface2: oklch(0.967 0.001 286.375);
-    --ink: oklch(0.145 0 0); --muted: oklch(0.45 0 0); --border: oklch(0.922 0 0);
-    --lime: oklch(76.8% 0.233 130.85); --on-lime: oklch(0.25 0.02 130);
-    --hero: #3f6212;
-    --hit-bg: #ecfccb; --hit-ink: #3f6212;
-    --miss-bg: #fef3c7; --miss-ink: #92400e;
-    --bad-bg: #fee2e2; --bad-ink: #991b1b;
-    --flat-bg: #ececea; --flat-ink: #57575e;
-    --hit: #65a30d; --miss: #d97706; --flat: #a1a1aa;
-    --shadow: 0 1px 2px rgba(20, 20, 25, .07);
-  }
-  html[data-theme="dark"] {
-    --bg: oklch(0.145 0 0); --surface: oklch(0.205 0 0); --surface2: oklch(0.269 0 0);
-    --ink: oklch(0.985 0 0); --muted: oklch(0.708 0 0); --border: oklch(1 0 0 / 10%);
-    --lime: oklch(76.8% 0.233 130.85); --on-lime: oklch(0.25 0.02 130);
-    --hero: oklch(76.8% 0.233 130.85);
-    --hit-bg: rgba(163, 230, 53, .13); --hit-ink: #bef264;
-    --miss-bg: rgba(217, 119, 6, .16); --miss-ink: #fbbf24;
-    --bad-bg: rgba(248, 113, 113, .14); --bad-ink: #f87171;
-    --flat-bg: rgba(161, 161, 170, .14); --flat-ink: #d4d4d8;
-    --hit: #a3e635; --miss: #f59e0b; --flat: #71717a;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .45);
+    --bg: #e9e7e1; --surface: #fbfaf7; --surface2: #efede7; --border: rgba(27, 27, 30, .12);
+    --ink: #1b1b1e; --muted: #63605a; --cream: #f5f1e8;
+    --hit: #d9482f; --miss: #b97a1a; --flat: #8e8e96;
+    --c1: #6e6a60; --c2: #d9482f; --c3: #b97a1a;
+    --shadow: 0 2px 8px rgba(27, 27, 30, .10);
   }
   @media (prefers-color-scheme: light) {
     html[data-theme="auto"] {
-      --bg: oklch(1 0 0); --surface: oklch(1 0 0); --surface2: oklch(0.967 0.001 286.375);
-      --ink: oklch(0.145 0 0); --muted: oklch(0.45 0 0); --border: oklch(0.922 0 0);
-      --hero: #3f6212;
-      --hit-bg: #ecfccb; --hit-ink: #3f6212;
-      --miss-bg: #fef3c7; --miss-ink: #92400e;
-      --bad-bg: #fee2e2; --bad-ink: #991b1b;
-      --flat-bg: #ececea; --flat-ink: #57575e;
-      --hit: #65a30d; --miss: #d97706; --flat: #a1a1aa;
-      --shadow: 0 1px 2px rgba(20, 20, 25, .07);
+      --bg: #e9e7e1; --surface: #fbfaf7; --surface2: #efede7; --border: rgba(27, 27, 30, .12);
+      --ink: #1b1b1e; --muted: #63605a;
+      --hit: #d9482f; --miss: #b97a1a; --flat: #8e8e96;
+      --c1: #6e6a60; --c2: #d9482f; --c3: #b97a1a;
+      --shadow: 0 2px 8px rgba(27, 27, 30, .10);
     }
   }
+  /* ---------- pastel card roles (same in both themes — brand blocks) ---------- */
+  .card-coral { --card-bg: #f2664d; --card-ink: #26120c; --card-muted: #3a170b; --card-line: rgba(38, 18, 12, .18); }
+  .card-peri  { --card-bg: #7b7ff2; --card-ink: #171839; --card-muted: #1d1e42; --card-line: rgba(23, 24, 57, .18); }
+  .card-mint  { --card-bg: #cde9dc; --card-ink: #14332a; --card-muted: #33604f; --card-line: rgba(20, 51, 42, .16); }
+  .card-peach { --card-bg: #f4c69a; --card-ink: #3a2410; --card-muted: #6e4a22; --card-line: rgba(58, 36, 16, .18); }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { color-scheme: dark light; }
   body {
     background: var(--bg); color: var(--ink);
-    font: 14px/1.5 var(--font);
+    font: 14px/1.5 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   .num { font-variant-numeric: tabular-nums; }
-  .mono { font-family: var(--mono); font-size: 12px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  .display { font-family: Archivo, Inter, system-ui, sans-serif; font-stretch: 72%;
+    text-transform: uppercase; letter-spacing: .015em; }
 
   /* ---------- shell ---------- */
   .shell { display: flex; min-height: 100vh; }
   .side {
-    width: 232px; flex: none; display: flex; flex-direction: column; gap: 6px;
+    width: 232px; flex: none; display: flex; flex-direction: column; gap: 4px;
     background: var(--surface); border-right: 1px solid var(--border);
     padding: 18px 12px; position: sticky; top: 0; height: 100vh;
   }
   .mark { display: flex; align-items: center; gap: 10px; padding: 2px 8px 14px; }
   .mark-box {
-    width: 34px; height: 34px; border-radius: 9px; background: var(--lime); color: var(--on-lime);
-    font-family: var(--mono); font-weight: 800; font-size: 14px;
+    width: 34px; height: 34px; border-radius: 11px; background: #f2664d; color: #26120c;
+    font-family: Archivo, sans-serif; font-stretch: 75%; font-weight: 800; font-size: 14px;
     display: flex; align-items: center; justify-content: center; flex: none;
   }
   .mark b { display: block; font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
@@ -92,23 +71,23 @@
   nav.side-nav { display: flex; flex-direction: column; gap: 2px; }
   nav.side-nav button {
     display: flex; align-items: center; gap: 10px; width: 100%;
-    background: transparent; color: var(--muted); border: 0; border-radius: 8px;
-    padding: 9px 10px; cursor: pointer; font-size: 13.5px; font-weight: 550; font-family: inherit;
+    background: transparent; color: var(--muted); border: 0; border-radius: 12px;
+    padding: 10px; cursor: pointer; font-size: 13.5px; font-weight: 600; font-family: inherit;
     text-align: left;
   }
   nav.side-nav button svg { flex: none; }
   nav.side-nav button:hover { color: var(--ink); background: var(--surface2); }
   nav.side-nav button.active { color: var(--ink); background: var(--surface2); }
-  nav.side-nav button.active svg { color: var(--hero); }
+  nav.side-nav button.active svg { color: var(--hit); }
   .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 8px 0;
     border-top: 1px solid var(--border); }
   .live { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
   .dot.ok { background: var(--hit); }
-  .dot.bad { background: var(--bad-ink); }
+  .dot.bad { background: #e5484d; }
   #theme-toggle {
     background: transparent; color: var(--muted); border: 1px solid var(--border);
-    border-radius: 8px; padding: 7px 10px; cursor: pointer; font-size: 12px; font-weight: 600;
+    border-radius: 999px; padding: 7px 12px; cursor: pointer; font-size: 12px; font-weight: 600;
     font-family: inherit; text-align: left;
   }
   #theme-toggle:hover { color: var(--ink); }
@@ -119,55 +98,97 @@
   }
 
   .main-col { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-  .topbar { display: flex; align-items: baseline; gap: 12px; padding: 18px 26px 0; flex-wrap: wrap; }
-  .topbar h2 { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
-  .topbar code { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
-  main { padding: 16px 26px 48px; max-width: 1160px; width: 100%; }
+  .topbar { display: flex; align-items: baseline; gap: 12px; padding: 20px 28px 0; flex-wrap: wrap; }
+  .topbar h2 { font-size: 21px; font-weight: 800; }
+  .topbar code { color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+  main { padding: 16px 28px 56px; max-width: 1180px; width: 100%; }
   .tab { display: none; }
   .tab.active { display: block; animation: tab-in 180ms var(--spring); }
   @keyframes tab-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-  /* ---------- statement hero + ledger ---------- */
-  .hero {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-    box-shadow: var(--shadow); padding: 26px 28px 22px;
+  /* ---------- bento cards ---------- */
+  .bento {
+    background: var(--card-bg, var(--surface)); color: var(--card-ink, var(--ink));
+    border-radius: var(--card-radius); box-shadow: var(--shadow);
+    border: 1px solid var(--card-line, var(--border));
+    padding: 22px 24px; position: relative; overflow: hidden;
   }
-  .hero .big { font-size: 76px; font-weight: 800; letter-spacing: -.04em; color: var(--hero); line-height: 1; }
-  .hero .what { color: var(--muted); font-size: 14px; margin-top: 8px; max-width: 60ch; }
-  .hero .what b { color: var(--ink); }
-  .ledger { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-    box-shadow: var(--shadow); margin-top: 14px; padding: 6px 22px; }
-  .lrow { display: flex; align-items: baseline; gap: 14px; padding: 11px 0;
-    border-bottom: 1px solid var(--border); }
-  .lrow:last-child { border-bottom: 0; }
-  .lrow .label { color: var(--muted); font-size: 13px; font-weight: 550; }
-  .lrow .value { margin-left: auto; font-size: 19px; font-weight: 700; letter-spacing: -.01em;
-    text-align: right; white-space: nowrap; }
-  .lrow .cap { color: var(--muted); font-size: 12px; text-align: right; min-width: 220px; }
-
-  /* ---------- panels ---------- */
+  .bento .kicker { color: var(--card-muted, var(--muted)); font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .08em; }
+  .bento .hint { color: var(--card-muted, var(--muted)); font-size: 12px; margin-top: 10px; }
+  .bento table th { color: var(--card-muted, var(--muted)); border-bottom-color: var(--card-line, var(--border)); }
+  .bento table td { border-bottom-color: var(--card-line, var(--border)); }
+  .bento tbody tr:hover td { background: rgba(0, 0, 0, .045); }
+  .bento input[type=text], .bento select {
+    background: rgba(255, 253, 249, .92); color: #1e1e1e; border: 1px solid transparent;
+  }
+  .bento input:focus, .bento select:focus { border-color: #1e1e1e; }
+  .bento .muted, .bento .empty { color: var(--card-muted, var(--muted)); }
+  .bento .empty b { color: var(--card-ink, var(--ink)); }
+  .bento .ttl { background: rgba(0, 0, 0, .14); }
+  .bento .ttl i { background: var(--card-ink, var(--ink)); }
+  .bento .skel { background: rgba(0, 0, 0, .10); }
+  .bento .skel::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); }
   .panel { background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; box-shadow: var(--shadow); padding: 16px 18px; margin-top: 14px; }
+    border-radius: var(--card-radius); box-shadow: var(--shadow); padding: 20px 22px; margin-top: 14px; }
   .panel > .label { color: var(--muted); font-size: 12px; font-weight: 650; margin-bottom: 10px; }
   .panel .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
-  canvas { max-height: 240px; }
+
+  /* overview composition */
+  .ov-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
+  .hero .big { font-size: 88px; font-weight: 850; line-height: .95; letter-spacing: -.02em;
+    font-stretch: 70%; margin: 6px 0 4px; }
+  .hero .sub { font-size: 14px; max-width: 44ch; }
+  .hero .sub b { font-weight: 750; }
+  .hero .meta { font-size: 12px; margin-top: 10px; }
+  .hero .dots { position: absolute; right: 0; top: 0; bottom: 0; width: 120px; opacity: .5;
+    background-image: radial-gradient(rgba(0,0,0,.28) 1.3px, transparent 1.3px);
+    background-size: 14px 14px;
+    -webkit-mask-image: linear-gradient(to left, black, transparent);
+    mask-image: linear-gradient(to left, black, transparent); }
+  .gauge-wrap { display: flex; align-items: center; gap: 16px; margin-top: 6px; }
+  .gauge-cap { font-size: 12px; }
+  .alertstrip { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+  .alert-ico { width: 44px; height: 44px; border-radius: 14px; flex: none;
+    display: flex; align-items: center; justify-content: center; }
+  .alert-ico.warn { background: #e8a13d; color: #26160a; }
+  .alert-ico.bad { background: #e5484d; color: #fff5f3; }
+  .alert-ico.calm { background: var(--hit); color: #26120c; }
+  .alertstrip .t { font-weight: 750; font-size: 14px; }
+  .alertstrip .b { color: var(--muted); font-size: 12.5px; margin-top: 2px; max-width: 80ch; }
+  .alertstrip button { margin-left: auto; flex: none; }
+  @media (max-width: 900px) { .ov-grid { grid-template-columns: 1fr; } .hero .big { font-size: 64px; } }
+
+  /* ledger */
+  .ledger { margin-top: 14px; padding: 4px 24px; }
+  .lrow { display: flex; align-items: baseline; gap: 14px; padding: 12px 0;
+    border-bottom: 1px solid var(--card-line, var(--border)); }
+  .lrow:last-child { border-bottom: 0; }
+  .lrow .label { font-size: 13px; font-weight: 600; }
+  .lrow .value { margin-left: auto; font-size: 20px; font-weight: 750; letter-spacing: -.01em;
+    text-align: right; white-space: nowrap; }
+  .lrow .cap { font-size: 12px; text-align: right; min-width: 230px; opacity: .75; }
 
   .row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
   input[type=text], input[type=number], select {
     background: var(--surface); color: var(--ink); border: 1px solid var(--border);
-    border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: inherit; outline: none;
+    border-radius: 999px; padding: 8px 14px; font-size: 13px; font-family: inherit; outline: none;
   }
   input[type=text] { min-width: 220px; }
   input:focus, select:focus { border-color: var(--hit); }
   button.primary {
-    background: var(--lime); color: var(--on-lime); border: 0; border-radius: 8px;
-    padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 700; font-family: inherit;
+    background: #1e1e1e; color: #f5f1e8; border: 0; border-radius: 999px;
+    padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 700; font-family: inherit;
   }
+  html[data-theme="light"] button.primary, html[data-theme="auto"] button.primary { box-shadow: var(--shadow); }
   button.primary:disabled { opacity: .55; cursor: wait; }
-  button.danger { background: transparent; color: var(--bad-ink); border: 1px solid currentColor; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 650; font-family: inherit; }
-  button.small { background: var(--surface2); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 600; font-family: inherit; }
+  button.danger { background: transparent; color: #e5484d; border: 1px solid currentColor; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 700; font-family: inherit; }
+  .bento button.danger { color: var(--card-ink, var(--ink)); }
+  button.small { background: var(--surface2); color: var(--ink); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 650; font-family: inherit; }
   button.small:hover { border-color: var(--muted); }
+  .bento button.small { background: rgba(255, 253, 249, .85); color: #1e1e1e; border-color: transparent; }
   label.toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; }
+  .bento label.toggle { color: var(--card-muted, var(--muted)); }
 
   /* ---------- tables ---------- */
   table { width: 100%; border-collapse: collapse; }
@@ -176,17 +197,19 @@
   tr:last-child td { border-bottom: 0; }
   tbody tr:hover td { background: var(--surface2); }
   .prompt-cell { max-width: 380px; overflow-wrap: anywhere; }
-  tr.hl td { background: var(--hit-bg); }
-  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 750; white-space: nowrap; }
-  .badge.HIT { background: var(--hit-bg); color: var(--hit-ink); }
-  .badge.MISS { background: var(--miss-bg); color: var(--miss-ink); }
-  .badge.BYPASS, .badge.ERROR { background: var(--flat-bg); color: var(--flat-ink); }
-  .badge.expected-yes { background: var(--hit-bg); color: var(--hit-ink); }
-  .badge.expected-no { background: var(--bad-bg); color: var(--bad-ink); }
+  tr.hl td { background: rgba(242, 102, 77, .14); }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 750; white-space: nowrap; }
+  .badge.HIT { background: #1e1e1e; color: #f5f1e8; }
+  .badge.MISS { background: #fffdf8; color: #92400e; border: 1px solid rgba(146, 64, 14, .4); }
+  .badge.BYPASS { background: var(--surface2); color: var(--muted); }
+  .badge.ERROR { background: #b91c1c; color: #fff5f3; }
+  .badge.expected-yes { background: #1e1e1e; color: #f5f1e8; }
+  .badge.expected-no { background: #b91c1c; color: #fff5f3; }
   .muted { color: var(--muted); }
   .empty { color: var(--muted); padding: 26px 16px; text-align: center; font-size: 13px; }
   .empty b { color: var(--ink); }
-  .err { color: var(--bad-ink); font-size: 12px; margin-top: 6px; min-height: 16px; }
+  .err { color: #e5484d; font-size: 12px; margin-top: 6px; min-height: 16px; }
+  .bento .err { color: var(--card-ink, var(--ink)); font-weight: 650; }
   .ttl { display: block; height: 3px; background: var(--surface2); border-radius: 2px; margin-top: 5px; min-width: 80px; overflow: hidden; }
   .ttl i { display: block; height: 100%; background: var(--hit); border-radius: 2px; }
   .skel { display: block; height: 13px; border-radius: 6px; background: var(--surface2); overflow: hidden; position: relative; }
@@ -196,9 +219,10 @@
   @keyframes shimmer { to { transform: translateX(100%); } }
 
   .tune-result { display: flex; gap: 26px; flex-wrap: wrap; align-items: baseline; margin: 4px 0 12px; }
-  .tune-result .big { font-size: 24px; font-weight: 750; letter-spacing: -.02em; }
-  .tune-result .lab { color: var(--muted); font-size: 12px; font-weight: 650; }
+  .tune-result .big { font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+  .tune-result .lab { font-size: 12px; font-weight: 650; opacity: .75; }
 
+  canvas { max-height: 240px; }
   @media (max-width: 860px) {
     .shell { flex-direction: column; }
     .side { width: auto; height: auto; position: static; border-right: 0;
@@ -206,9 +230,9 @@
     .mark { padding-bottom: 8px; }
     nav.side-nav { flex-direction: row; overflow-x: auto; }
     nav.side-nav button { width: auto; white-space: nowrap; }
-    .navlabel, .side-foot .tuneline { display: none; }
     .side-foot { flex-direction: row; align-items: center; border-top: 0; padding: 8px 2px 0; }
-    .hero .big { font-size: 52px; }
+    .side-foot .tuneline { display: none; }
+    .hero .big { font-size: 60px; }
     .lrow { flex-wrap: wrap; }
     .lrow .cap { min-width: 0; text-align: left; margin-left: auto; }
   }
@@ -226,9 +250,9 @@
       <div><b>Semantic Cache</b><span>proxy · ops console</span></div>
     </div>
     <nav class="side-nav" aria-label="Dashboard sections">
-      <button data-tab="metrics" class="active">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 13.5h12"/><path d="M4 11V8M8 11V4.5M12 11V6.5"/></svg>
-        Metrics</button>
+      <button data-tab="overview" class="active">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 2.5h5v5h-5zM8.5 2.5h5v5h-5zM2.5 8.5h5v5h-5zM8.5 8.5h5v5h-5z"/></svg>
+        Overview</button>
       <button data-tab="cache">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5.5 8 2.5l5.5 3v5L8 13.5 2.5 10.5v-5Z"/><path d="M2.5 5.5 8 8.5l5.5-3M8 8.5v5"/></svg>
         Cache Browser</button>
@@ -248,27 +272,53 @@
 
   <div class="main-col">
     <div class="topbar">
-      <h2 id="section-title">Metrics</h2>
+      <h2 id="section-title" class="display">Overview</h2>
       <code id="base-url"></code>
     </div>
     <main>
-      <!-- ============ METRICS ============ -->
-      <section id="tab-metrics" class="tab active" aria-label="Metrics">
-        <div class="hero">
-          <div class="big num" id="m-hitrate">–</div>
-          <div class="what"><b>of requests never touched the LLM.</b> <span id="m-hits-cap">–</span></div>
-          <div class="what" id="m-req-cap" style="margin-top:2px">–</div>
+      <!-- ============ OVERVIEW ============ -->
+      <section id="tab-overview" class="tab active" aria-label="Overview">
+        <div class="ov-grid">
+          <div class="bento card-coral hero">
+            <div class="dots" aria-hidden="true"></div>
+            <div class="kicker">Hit rate · lifetime</div>
+            <div class="big num" id="m-hitrate">–</div>
+            <div class="sub"><b>of requests never touched the LLM.</b> <span id="m-hits-cap">–</span></div>
+            <div class="meta muted" id="m-req-cap">–</div>
+            <div class="meta muted" id="metrics-updated"></div>
+          </div>
+          <div class="bento card-peach">
+            <div class="kicker">Speedup · HIT vs MISS</div>
+            <div class="gauge-wrap">
+              <svg id="gauge" width="132" height="96" viewBox="0 0 132 96" role="img" aria-label="speedup gauge">
+                <path id="gauge-track" fill="none" stroke="rgba(58,36,16,.18)" stroke-width="11" stroke-linecap="round" d=""/>
+                <path id="gauge-val" fill="none" stroke="#3a2410" stroke-width="11" stroke-linecap="round" d=""/>
+              </svg>
+              <div>
+                <div class="num" id="m-speedup" style="font-size:30px;font-weight:800;letter-spacing:-.02em">–</div>
+                <div class="gauge-cap muted" id="m-lat-cap">–</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="ledger" role="group" aria-label="Savings ledger">
-          <div class="lrow"><span class="label">Tokens never generated again</span><span class="value num" id="m-tokens">–</span></div>
-          <div class="lrow"><span class="label">Speedup, HIT vs MISS</span><span class="value num" id="m-speedup">–</span><span class="cap" id="m-lat-cap">–</span></div>
-          <div class="lrow"><span class="label">Requests served</span><span class="value num" id="m-total">–</span></div>
-          <div class="lrow"><span class="label">Est. cost saved</span><span class="value num" id="m-cost">–</span><span class="cap">gpt-3.5-turbo pricing; free models $0</span></div>
+        <div class="panel alertstrip" id="alert-strip" hidden>
+          <span class="alert-ico calm" id="alert-ico">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 2.5 18 17H2L10 2.5Z" stroke-linejoin="round"/><path d="M10 8v4"/><circle cx="10" cy="14.5" r=".4" fill="currentColor"/></svg>
+          </span>
+          <div>
+            <div class="t" id="alert-title">All quiet</div>
+            <div class="b" id="alert-body">No errors in the recent window.</div>
+          </div>
+          <button class="small" id="alert-btn">View log</button>
         </div>
         <div class="row" style="margin-top:14px">
           <button class="primary" id="btn-refresh-metrics">Refresh now</button>
           <label class="toggle"><input type="checkbox" id="auto-metrics" checked> auto-refresh every 5 s</label>
-          <span id="metrics-updated" class="muted" style="font-size:12px"></span>
+        </div>
+        <div class="ledger bento" style="background:var(--surface);color:var(--ink)" role="group" aria-label="Savings ledger">
+          <div class="lrow"><span class="label">Tokens never generated again</span><span class="value num" id="m-tokens">–</span></div>
+          <div class="lrow"><span class="label">Requests served</span><span class="value num" id="m-total">–</span></div>
+          <div class="lrow"><span class="label">Est. cost saved</span><span class="value num" id="m-cost">–</span><span class="cap">gpt-3.5-turbo pricing; free models $0</span></div>
         </div>
         <div class="panel"><div class="label">Request mix over time (recent log)</div><canvas id="chart-trend" style="max-height:280px"></canvas><div class="hint" id="trend-hint"></div></div>
         <div class="panel">
@@ -289,7 +339,7 @@
           <button class="danger" id="btn-purge-all">Purge ALL</button>
         </div>
         <div class="err" id="cache-error"></div>
-        <div class="panel" style="margin-top:0;padding:4px 6px;">
+        <div class="bento card-mint" style="padding:8px 10px;">
           <table>
             <thead><tr>
               <th scope="col">ID</th><th scope="col">Prompt</th><th scope="col">Model</th><th scope="col">Created</th><th scope="col">Expires</th><th scope="col">Hits</th><th scope="col">Last hit</th><th scope="col"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Actions</span></th>
@@ -308,8 +358,8 @@
           <button class="small" id="btn-auto-tune">Auto-tune threshold</button>
         </div>
         <div class="err" id="sweep-error"></div>
-        <div class="panel" id="tune-panel" hidden>
-          <div class="label">Auto-tune evidence</div>
+        <div class="bento card-peri" id="tune-panel" hidden>
+          <div class="kicker">Auto-tune evidence</div>
           <div class="tune-result">
             <div><div class="lab">recommended</div><div class="big num" id="tune-best">–</div></div>
             <div><div class="lab">F1 at pick</div><div class="big num" id="tune-f1">–</div></div>
@@ -320,7 +370,7 @@
             <tbody id="tune-body"></tbody>
           </table>
         </div>
-        <div class="panel"><div class="label">Precision / recall / F1 by threshold</div><canvas id="chart-sweep"></canvas></div>
+        <div class="bento card-peri"><div class="kicker">Precision / recall / F1 by threshold</div><canvas id="chart-sweep"></canvas></div>
         <div class="panel">
           <table>
             <thead><tr><th scope="col">Threshold</th><th scope="col">Precision</th><th scope="col">Recall</th><th scope="col">F1</th></tr></thead>
@@ -348,7 +398,7 @@
             <option value="ERROR">ERROR</option>
           </select>
         </div>
-        <div class="panel" style="margin-top:0;padding:4px 6px;">
+        <div class="bento card-peach" style="padding:8px 10px;">
           <table>
             <thead><tr><th scope="col">Time</th><th scope="col">Outcome</th><th scope="col">Prompt</th><th scope="col">Similarity</th><th scope="col">Latency</th><th scope="col">Tokens in/out</th><th scope="col">Est. cost</th></tr></thead>
             <tbody id="logs-body"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
@@ -442,7 +492,6 @@ function palette() {
     grid: cssVar("--border") || "#333",
     hit: cssVar("--hit"), miss: cssVar("--miss"), flat: cssVar("--flat"),
     c1: cssVar("--c1"), c2: cssVar("--c2"), c3: cssVar("--c3"),
-    accent: cssVar("--lime"),
   };
 }
 function fmtTime(ts) {
@@ -478,10 +527,29 @@ function setDot(ok) {
   $("live-text").textContent = ok ? "live" : "unreachable";
 }
 
+// ---------- gauge (240° arc, capped scale — honest, no fake precision) ----------
+function polar(cx, cy, r, deg) {
+  const a = deg * Math.PI / 180;
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+}
+function arcPath(cx, cy, r, frac) {
+  const start = 150, sweep = 240 * Math.max(0, Math.min(1, frac));
+  const [sx, sy] = polar(cx, cy, r, start);
+  const [ex, ey] = polar(cx, cy, r, start + sweep);
+  if (sweep <= 0) return `M ${sx.toFixed(1)} ${sy.toFixed(1)}`;
+  return `M ${sx.toFixed(1)} ${sy.toFixed(1)} A ${r} ${r} 0 ${sweep > 180 ? 1 : 0} 1 ${ex.toFixed(1)} ${ey.toFixed(1)}`;
+}
+const GAUGE_MAX = 50;  // speedup values above this pin the needle; the number stays exact
+function drawGauge(speedup) {
+  $("gauge-track").setAttribute("d", arcPath(66, 62, 44, 1));
+  $("gauge-val").setAttribute("d", arcPath(66, 62, 44, speedup != null ? speedup / GAUGE_MAX : 0));
+}
+
 // ---------- tabs ----------
-const TITLES = { metrics: "Metrics", cache: "Cache browser", sweep: "Threshold lab", logs: "Request log" };
-let activeTab = "metrics";
+const TITLES = { overview: "Overview", cache: "Cache browser", sweep: "Threshold lab", logs: "Request log" };
+let activeTab = "overview";
 function activateTab(name) {
+  if (name === "metrics") name = "overview";  // legacy deep-link compat
   const btn = document.querySelector(`nav.side-nav button[data-tab="${name}"]`);
   if (!btn) return;
   document.querySelectorAll("nav.side-nav button").forEach(x => x.classList.remove("active"));
@@ -490,7 +558,7 @@ function activateTab(name) {
   $("tab-" + name).classList.add("active");
   $("section-title").textContent = TITLES[name] || name;
   activeTab = name;
-  if (activeTab === "metrics") { loadMetrics(); loadTrend(); }
+  if (activeTab === "overview") loadOverview();
   if (activeTab === "cache") loadCache();
   if (activeTab === "logs") loadLogs();
 }
@@ -498,10 +566,9 @@ document.querySelectorAll("nav.side-nav button").forEach(b => { b.onclick = () =
 
 // deep-link support: /dashboard?tab=sweep&token=<ADMIN_TOKEN> opens on that tab
 const urlTab = new URLSearchParams(location.search).get("tab");
-if (urlTab) {
-  activateTab(urlTab);
-  if (urlTab === "sweep") runSweep();  // pre-run so the view isn't empty on deep-link
-}
+activateTab(urlTab || "overview");
+if (urlTab === "sweep") runSweep();  // pre-run so the view isn't empty on deep-link
+$("alert-btn").onclick = () => activateTab("logs");
 
 // ---------- charts (rebuilt on theme change from cached payloads) ----------
 let trendChart = null, sweepChart = null;
@@ -515,9 +582,9 @@ function drawTrend(t) {
   const data = {
     labels: t.labels,
     datasets: [
-      { label: "HIT", data: t.hits, backgroundColor: p.hit, borderRadius: 3, maxBarThickness: 54 },
-      { label: "MISS", data: t.misses, backgroundColor: p.miss, borderRadius: 3, maxBarThickness: 54 },
-      { label: "other", data: t.other, backgroundColor: p.flat, borderRadius: 3, maxBarThickness: 54 },
+      { label: "HIT", data: t.hits, backgroundColor: p.hit, borderRadius: 4, maxBarThickness: 54 },
+      { label: "MISS", data: t.misses, backgroundColor: p.miss, borderRadius: 4, maxBarThickness: 54 },
+      { label: "other", data: t.other, backgroundColor: p.flat, borderRadius: 4, maxBarThickness: 54 },
     ],
   };
   trendChart = new Chart($("chart-trend"), {
@@ -543,29 +610,65 @@ function drawSweep(rs) {
   });
 }
 
-// ---------- metrics ----------
-async function loadMetrics() {
+// ---------- overview (metrics + alerts + trend + users) ----------
+async function loadOverview() {
   try {
-    const m = await api("/metrics");
+    const [m, logData, entriesData] = await Promise.all([
+      api("/metrics"),
+      api("/logs/recent?limit=500"),
+      api("/cache/entries"),
+    ]);
     setDot(true);
     const tokens = m.total_tokens_saved ?? 0;
     const hits = Math.round(m.total_requests * m.hit_rate);
-    countUp($("m-tokens"), tokens, v => Math.round(v).toLocaleString());
+    const misses = m.total_requests - hits;
     countUp($("m-hitrate"), (m.hit_rate ?? 0) * 100, v => v.toFixed(1) + " %");
+    $("m-hits-cap").textContent = `${hits} HIT · ${misses} MISS`;
+    $("m-req-cap").textContent = `${m.total_requests} requests · ${hits} served from cache · updated ${new Date().toLocaleTimeString()}`;
+    countUp($("m-tokens"), tokens, v => Math.round(v).toLocaleString());
     countUp($("m-total"), m.total_requests ?? 0, v => String(Math.round(v)));
     $("m-cost").textContent = "$" + (m.estimated_cost_saved_usd ?? 0).toFixed(4);
-    $("m-req-cap").textContent = `${m.total_requests} requests · ${hits} served from cache`;
-    $("m-hits-cap").textContent = `${hits} HIT · ${m.total_requests - hits} MISS`;
     const hitMs = m.avg_latency_hit_ms ?? 0, missMs = m.avg_latency_miss_ms ?? 0;
     const f = v => v >= 10 ? v.toFixed(0) : v.toFixed(2);
+    let speedup = null;
     if (hitMs > 0 && missMs > 0) {
-      countUp($("m-speedup"), missMs / hitMs, v => v.toFixed(1) + "×");
+      speedup = missMs / hitMs;
+      countUp($("m-speedup"), speedup, v => v.toFixed(1) + "×");
       $("m-lat-cap").textContent = `${f(hitMs)} ms HIT vs ${f(missMs)} ms MISS`;
     } else {
       $("m-speedup").textContent = "–";
       $("m-lat-cap").textContent = "send traffic to measure";
     }
+    drawGauge(speedup);
 
+    // alert strip: errors first, then expiring entries, then bypasses, else calm
+    const logs = logData.logs ?? [];
+    const errors = logs.filter(l => l.outcome === "ERROR").length;
+    const bypasses = logs.filter(l => l.outcome === "BYPASS").length;
+    const nowS = Date.now() / 1000;
+    const expiring = (entriesData.entries ?? []).filter(e => e.expires_at > nowS && e.expires_at - nowS < 3600).length;
+    const ico = $("alert-ico"), strip = $("alert-strip");
+    strip.hidden = false;
+    ico.classList.remove("warn", "bad", "calm");
+    if (errors > 0) {
+      ico.classList.add("bad");
+      $("alert-title").textContent = `${errors} upstream error${errors === 1 ? "" : "s"} in the recent window`;
+      $("alert-body").textContent = "Failed forwards are never cached. Check the log, then the provider status — the circuit breaker fails fast while an upstream is sick.";
+    } else if (expiring > 0) {
+      ico.classList.add("warn");
+      $("alert-title").textContent = `${expiring} entr${expiring === 1 ? "y expires" : "ies expire"} within the hour`;
+      $("alert-body").textContent = "TTL doing its job — stale answers leave on schedule. Purge early from the Cache Browser if a response went bad.";
+    } else if (bypasses > 0) {
+      ico.classList.add("warn");
+      $("alert-title").textContent = `${bypasses} bypassed request${bypasses === 1 ? "" : "s"} recently`;
+      $("alert-body").textContent = "X-Cache-Bypass traffic always pays full price. Expected for fresh checks — worth a look if it grows.";
+    } else {
+      ico.classList.add("calm");
+      $("alert-title").textContent = "All quiet";
+      $("alert-body").textContent = `No errors, nothing expiring soon. Threshold 0.85 holds F1 0.857 on the labeled set.`;
+    }
+
+    renderTrend(logs);
     const users = (m.per_user ?? []).slice().sort((a, b) => b.tokens_saved - a.tokens_saved);
     $("users-body").innerHTML = users.length ? users.map(u => `
       <tr>
@@ -576,44 +679,43 @@ async function loadMetrics() {
         <td class="num">$${u.cost_saved_usd.toFixed(6)}</td>
       </tr>`).join("")
       : `<tr><td colspan="5" class="empty"><b>No requests logged yet.</b><br>POST a prompt twice to see MISS → HIT here.</td></tr>`;
-    $("metrics-updated").textContent = "updated " + new Date().toLocaleTimeString();
-  } catch (e) { setDot(false); $("live-text").textContent = "unreachable"; $("metrics-updated").textContent = "error: " + e.message; }
+  } catch (e) {
+    setDot(false); $("live-text").textContent = "unreachable";
+    $("m-req-cap").textContent = "error: " + e.message;
+  }
 }
-$("btn-refresh-metrics").onclick = () => { loadMetrics(); loadTrend(); };
-setInterval(() => { if ($("auto-metrics").checked && activeTab === "metrics") { loadMetrics(); loadTrend(); } }, 5000);
+$("btn-refresh-metrics").onclick = loadOverview;
+setInterval(() => { if ($("auto-metrics").checked && activeTab === "overview") loadOverview(); }, 5000);
 
 // ---------- outcome trend (bucketed from the recent-log window) ----------
-async function loadTrend() {
-  try {
-    const data = await api("/logs/recent?limit=500");
-    const logs = (data.logs ?? []).slice().sort((a, b) => a.timestamp - b.timestamp);
-    if (!logs.length) {
-      lastTrend = null;
-      if (trendChart) { trendChart.destroy(); trendChart = null; }
-      $("trend-hint").textContent = "No requests in the window yet — trend appears after traffic.";
-      return;
-    }
-    const span = Math.max(1, logs[logs.length - 1].timestamp - logs[0].timestamp);
-    const buckets = Math.min(24, Math.max(4, Math.round(Math.sqrt(logs.length))));
-    const width = span / buckets;
-    const t0 = logs[0].timestamp;
-    const hits = new Array(buckets).fill(0), misses = new Array(buckets).fill(0), other = new Array(buckets).fill(0);
-    const labels = [];
-    for (let i = 0; i < buckets; i++) {
-      const end = t0 + width * (i + 1);
-      labels.push(new Date(end * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}));
-    }
-    for (const l of logs) {
-      const i = Math.min(buckets - 1, Math.floor((l.timestamp - t0) / width));
-      if (l.outcome === "HIT") hits[i]++;
-      else if (l.outcome === "MISS") misses[i]++;
-      else other[i]++;
-    }
-    lastTrend = { labels, hits, misses, other };
-    $("trend-hint").textContent = `${logs.length} recent request${logs.length === 1 ? "" : "s"} bucketed ×${buckets}.`;
+function renderTrend(logs) {
+  const sorted = logs.slice().sort((a, b) => a.timestamp - b.timestamp);
+  if (!sorted.length) {
+    lastTrend = null;
     if (trendChart) { trendChart.destroy(); trendChart = null; }
-    drawTrend(lastTrend);
-  } catch (e) { $("trend-hint").textContent = "error: " + e.message; }
+    $("trend-hint").textContent = "No requests in the window yet — trend appears after traffic.";
+    return;
+  }
+  const span = Math.max(1, sorted[sorted.length - 1].timestamp - sorted[0].timestamp);
+  const buckets = Math.min(24, Math.max(4, Math.round(Math.sqrt(sorted.length))));
+  const width = span / buckets;
+  const t0 = sorted[0].timestamp;
+  const hits = new Array(buckets).fill(0), misses = new Array(buckets).fill(0), other = new Array(buckets).fill(0);
+  const labels = [];
+  for (let i = 0; i < buckets; i++) {
+    const end = t0 + width * (i + 1);
+    labels.push(new Date(end * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}));
+  }
+  for (const l of sorted) {
+    const i = Math.min(buckets - 1, Math.floor((l.timestamp - t0) / width));
+    if (l.outcome === "HIT") hits[i]++;
+    else if (l.outcome === "MISS") misses[i]++;
+    else other[i]++;
+  }
+  lastTrend = { labels, hits, misses, other };
+  $("trend-hint").textContent = `${sorted.length} recent request${sorted.length === 1 ? "" : "s"} bucketed ×${buckets}.`;
+  if (trendChart) { trendChart.destroy(); trendChart = null; }
+  drawTrend(lastTrend);
 }
 
 // ---------- cache browser ----------
@@ -745,8 +847,6 @@ setInterval(() => { if ($("auto-logs").checked && activeTab === "logs") loadLogs
 
 // ---------- initial load ----------
 paintTheme();
-loadMetrics();
-loadTrend();
 </script>
 </body>
 </html>
