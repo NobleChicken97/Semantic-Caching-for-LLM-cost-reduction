@@ -86,6 +86,10 @@ The two lost directories are restored, the working tree is verified end-to-end (
   - [x] Q4 `scripts/Test-SemCache.ps1` (15 checks: exact/paraphrase/boundary/model-isolation/bypass/auth/validation/metrics/logs/TTL) — syntax-checked, awaiting owner run
   - [x] Q5 Commit + push (CI validates) → close
 
+- [ ] **🟠 P1** **Deep adversarial battery (2026-09-04).** Owner asked for ground-truth testing beyond metrics, esp. cross-entity false hits (Finland served France's answer).
+  - [x] S1 `scripts/Test-SemCache-Deep.ps1`: Phase A labeled-set validation (31 pairs verbatim, B-only asserts, clean-room purge + borderline cross-check with `-AdminToken`), Phase B entity-substitution spotlight (Finland/Norway/Japan capitals, population, currency), Phase C 12-prompt real-life session with score, Phase D robustness; syntax-checked
+  - [ ] S2 Commit + push → owner runs `powershell -ExecutionPolicy Bypass -File scripts\Test-SemCache-Deep.ps1 [-AdminToken ...]` and pastes output
+
 - [ ] **🟠 P1** **Custom domain `semcache.noblechicken.me` (Namecheap → Lightsail → Caddy auto-HTTPS).** Tracked sub-todos:
   - [x] D1 Namecheap A record `semcache` → `98.95.205.92` (owner done; verified propagating via recursive + direct lookup)
   - [x] D2a Host pre-staged: `DOMAIN=semcache.noblechicken.me`, stack healthy on IP (cert issuance retries in background)
