@@ -180,6 +180,18 @@
 - **Alternative:** Raise to the framework default 500; cache the failure.
 - **Why this won:** OpenAI SDK clients expect OpenAI-shaped errors; defaulting to 500 surprises them. Caching a failure means a permanent bad entry — anti-pattern.
 
+### 4.17 Message-only embedding input (Phase 9)
+
+- **Chosen:** `ChatCompletionRequest.embedding_text()` (messages joined without the `[model]` line) feeds `lookup()`/`store()`/logging; `canonical_prompt()` keeps the model line for hash identity.
+- **Alternative:** Re-tune the threshold upward on prefixed strings.
+- **Why this won:** A constant model prefix dominates short user text in embedding space and inflated every live similarity (measured: recall 1.0 / precision ~0.45 vs the tuned R=0.9375/P=0.7895). Model isolation never needed the prefix (`model_used` column + filter). Re-tuning would launder a client-specific artifact into a permanent global constant. Caught real bugs on the way in: the old replace-scope in `store()` and the two-column unique index both assumed model-in-hash (fixed: model-scoped replace with FK detach, triple-key index with migration).
+
+### 4.18 Two-signal semantic veto (Phase 9)
+
+- **Chosen:** After a candidate clears the cosine threshold, `entity_veto()` can still refuse the HIT, logged as MISS: (1) entity swap — disjoint capitalized-token sets (sentence-initial excluded) *plus* shared template (Jaccard ≥ 0.2, calibrated); (2) fact-type swap — disjoint keyword sets (`capital`, `population`, …) with no gate. Lexical rules live in dependency-free `src/proxy/text.py`, shared verbatim with `scripts/analyze_overlap.py` and `scripts/calibrate_trust.py`.
+- **Alternative:** NER model; pure threshold raise; global Jaccard floor.
+- **Why this won:** NER is a heavy dep on the hot path; a threshold raise destroys recall; a global Jaccard floor provably kills labeled positives (three sit at 0.000 — measured in `analyze_overlap.py`). The template gate exists because calibration showed the naive entity rule vetoing a true paraphrase ("WWII" vs "World War II").
+
 ## 5. Known limitations & deliberately deferred work
 
 These are documented, accepted decisions — not oversights:
@@ -195,6 +207,8 @@ These are documented, accepted decisions — not oversights:
 9. **Free-tier deployments lose cache/history on redeploy.** Acceptable for demo; paid plan with disk fixes it.
 10. **The circuit breaker is per-process.** Like coalescing, breaker state lives in one uvicorn worker's memory; multi-instance deployments get independent breakers per instance (acceptable — each still protects its own callers).
 11. **No streaming response caching.** v1 caches complete responses only.
+12. **Veto blind spots (Phase 9, measured):** the guard sees nothing on all-lowercase, non-Latin-script, or single-letter-difference entities; near-duplicate negatives with no entities and no fact keywords (haiku/limerick, quantum/classical, hello/goodbye, exercise-risk, ML/DL) still clear 0.85 — expected live precision ≈0.73 vs 0.79 documented. Short phatic collisions ("Thanks!" vs "Good morning", 0.851) have no vetoable features; a global Jaccard floor was measured and rejected (three labeled positives sit at 0.000).
+13. **Purge is unaudited.** No who/when record today — a mid-session purge looks identical to data loss in forensics (learned live 2026-09-04). Follow-up: log line + "last purged" on the dashboard.
 
 ## 6. Integration notes (external dependencies)
 

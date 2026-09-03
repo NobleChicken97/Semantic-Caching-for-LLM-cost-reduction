@@ -27,6 +27,20 @@
 
 ---
 
+## 2026-09-04 — Phase 9 semantic-trust fixes (shipped, live-verified)
+
+Owner's deep battery (`scripts/Test-SemCache-Deep.ps1`) found two defects: (1) eval/prod skew — threshold tuned on raw strings, production embedded `"[model]…\n[user]…"` text (live R=1.0/P~0.45 vs doc 0.9375/0.7895); (2) single-entity swaps HIT (Finland 0.87, Norway 0.90, Japan 0.87, population 0.91).
+
+**Fix A (root cause):** `ChatCompletionRequest.embedding_text()` (message-only) feeds lookup/store/log; `canonical_prompt()` untouched for hashing. Cross-model isolation preserved via `model_used`. Exposed two real latent bugs on the way in: `store()` replace-scope and the two-column unique index both assumed model-in-hash — fixed (model-scoped replace with FK detach; triple-key index + idempotent migration). New tests caught a third live: `[user]` prefix shifted token indices so sentence-initial words misread as entities (fixed via tag stripping in `text.py`).
+
+**Fix B (two-signal veto):** `entity_veto()` in `cache.py` — (1) disjoint capitalized sets + template gate Jaccard >= 0.2, (2) disjoint fact-type keywords ungated. Calibration (`scripts/calibrate_trust.py`, same helpers as shipped code) proves zero recall risk; the gate specifically saves the WWII/World-War-II paraphrase. Lexical rules live in dependency-free `src/proxy/text.py`, shared with both analysis scripts so evidence and code cannot drift.
+
+**Fix C (lexical floor) deliberately NOT built:** Jaccard table proves no global floor exists (3 labeled positives at 0.000); post-Fix-A sims clear both collision probes on threshold alone (username 0.807, thanks 0.841).
+
+**Measured after (clean-room live battery):** recall 15/16 = doc exactly; precision 0.82 beats doc 0.79; spotlight all-MISS; session 10/11 (thanks/greeting 0.851 = 0.001 over bar, named residue). 162/162 pytest green; sweep byte-identical. Prod migrated via one clean purge (metrics preserved by FK-detach). Forensics footnote: null matched_entry_ids mid-run traced to a dashboard Purge ALL click during the battery — led to a follow-up item to audit-trail purges.
+
+---
+
 ## 2026-09-03 (later still) — senior code review executed: dead weight removed
 
 Context: full maintainability review (all 8 requested categories) verified against usage-counted greps; Phase 1 (zero-risk) + Phase 2 (owner decisions) executed. Nothing behavioral changed — 142 tests must stay green.

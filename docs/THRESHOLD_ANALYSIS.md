@@ -92,6 +92,10 @@ At 0.88 we already lose 25% of true hits; at 0.93 we lose 69%. Since a miss mean
 
 A prompt with a single character-level typo ("captial") scores only **0.753** against its clean version despite being semantically identical — BGE embeddings are sensitive to spelling noise, so such prompts will miss the cache even at lenient thresholds. Fixing this would require character-fuzzy fallback matching (out of scope for v1).
 
+## Production note: eval/prod distribution skew (found live 2026-09-04, fixed Phase 9)
+
+The sweep above embeds **raw** pair strings — but production used to embed `"[model]<name>\n[user]..."`-prefixed text. The constant prefix inflated every live similarity a few points: measured live recall 1.0 / precision ~0.45 against this curve's R=0.9375/P=0.7895, with single-entity swaps (Finland 0.87, Norway 0.90, Japan 0.87) clearing 0.85. Since Phase 9 the route embeds message-only text (`embedding_text()`), so production matches this distribution by construction; the residual gap vs this table is the documented scan-max effect (live takes the max over all cached entries, pairwise takes one pair at a time). Single-entity and fact-type swaps are additionally covered by the two-signal veto (`design.md` §4.18).
+
 ---
 
 ## Determinism notes
