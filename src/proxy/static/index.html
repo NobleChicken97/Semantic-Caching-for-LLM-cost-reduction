@@ -16,7 +16,7 @@
     --ink: #f5f1e8; --muted: #a8a49a; --cream: #f5f1e8;
     --hit: #f2664d; --miss: #e8a13d; --flat: #8e8e96;
     --c1: #e8e4da; --c2: #f2664d; --c3: #e8a13d;
-    --radius: 10px; --card-radius: 28px; --shadow: 0 2px 8px rgba(0, 0, 0, .35);
+    --radius: 10px; --card-radius: 16px; --shadow: 0 2px 8px rgba(0, 0, 0, .35);
     --spring: cubic-bezier(.16, 1, .3, 1);
   }
   html[data-theme="light"] {
@@ -34,6 +34,9 @@
       --c1: #6e6a60; --c2: #d9482f; --c3: #b97a1a;
       --shadow: 0 2px 8px rgba(27, 27, 30, .10);
     }
+    html[data-theme="auto"] #ambient i:nth-child(1) { --oc: rgba(242, 102, 77, .10); }
+    html[data-theme="auto"] #ambient i:nth-child(2) { --oc: rgba(123, 127, 242, .10); }
+    html[data-theme="auto"] #ambient i:nth-child(3) { --oc: rgba(232, 161, 61, .09); }
   }
   /* ---------- pastel card roles (same in both themes — brand blocks) ---------- */
   .card-coral { --card-bg: #f2664d; --card-ink: #26120c; --card-muted: #3a170b; --card-line: rgba(38, 18, 12, .18); }
@@ -56,43 +59,44 @@
   /* ---------- shell ---------- */
   .shell { display: flex; min-height: 100vh; }
   .side {
-    width: 232px; flex: none; display: flex; flex-direction: column; gap: 4px;
+    width: 78px; flex: none; display: flex; flex-direction: column; gap: 4px;
     background: var(--surface); border-right: 1px solid var(--border);
-    padding: 18px 12px; position: sticky; top: 0; height: 100vh;
+    padding: 18px 12px; position: sticky; top: 0; height: 100vh; align-items: center;
   }
-  .mark { display: flex; align-items: center; gap: 10px; padding: 2px 8px 14px; }
+  .mark { display: flex; align-items: center; padding: 2px 0 14px; }
+  .mark > div { display: none; }
   .mark-box {
-    width: 34px; height: 34px; border-radius: 11px; background: #f2664d; color: #26120c;
+    width: 38px; height: 38px; border-radius: 8px; background: #f2664d; color: #26120c;
     font-family: Archivo, sans-serif; font-stretch: 75%; font-weight: 800; font-size: 14px;
     display: flex; align-items: center; justify-content: center; flex: none;
   }
-  .mark b { display: block; font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
-  .mark span { display: block; color: var(--muted); font-size: 11.5px; }
-  nav.side-nav { display: flex; flex-direction: column; gap: 2px; }
+  nav.side-nav { display: flex; flex-direction: column; gap: 4px; align-items: center; }
   nav.side-nav button {
-    display: flex; align-items: center; gap: 10px; width: 100%;
+    display: flex; align-items: center; justify-content: center; width: 46px; height: 46px;
     background: transparent; color: var(--muted); border: 0; border-radius: 12px;
-    padding: 10px; cursor: pointer; font-size: 13.5px; font-weight: 600; font-family: inherit;
-    text-align: left;
+    padding: 0; cursor: pointer; font-size: 0; font-family: inherit;
+    transition: transform .16s var(--spring), background .16s var(--spring), color .16s var(--spring);
   }
-  nav.side-nav button svg { flex: none; }
-  nav.side-nav button:hover { color: var(--ink); background: var(--surface2); }
+  nav.side-nav button svg { flex: none; width: 19px; height: 19px; }
+  nav.side-nav button:hover { color: var(--ink); background: var(--surface2); transform: translateX(2px); }
   nav.side-nav button.active { color: var(--ink); background: var(--surface2); }
   nav.side-nav button.active svg { color: var(--hit); }
-  .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 8px 0;
-    border-top: 1px solid var(--border); }
-  .live { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+  .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding: 10px 0 0;
+    border-top: 1px solid var(--border); align-items: center; }
+  .live { display: flex; align-items: center; color: var(--muted); font-size: 12px; }
+  .live span:last-child { display: none; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
   .dot.ok { background: var(--hit); }
   .dot.bad { background: #e5484d; }
   #theme-toggle {
     background: transparent; color: var(--muted); border: 1px solid var(--border);
-    border-radius: 999px; padding: 7px 12px; cursor: pointer; font-size: 12px; font-weight: 600;
-    font-family: inherit; text-align: left;
+    border-radius: 10px; width: 46px; height: 38px; cursor: pointer; font-family: inherit;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .16s var(--spring), color .16s var(--spring), border-color .16s var(--spring);
   }
-  #theme-toggle:hover { color: var(--ink); }
-  .tuneline { color: var(--muted); font-size: 11.5px; padding: 0 2px; }
-  .tuneline b { color: var(--ink); }
+  #theme-toggle:hover { color: var(--ink); border-color: var(--muted); }
+  #theme-toggle:active { transform: scale(.94); }
+  .tuneline { display: none; }
   button:focus-visible, input:focus-visible, select:focus-visible {
     outline: 2px solid var(--hit); outline-offset: 2px;
   }
@@ -149,7 +153,7 @@
   .gauge-wrap { display: flex; align-items: center; gap: 16px; margin-top: 6px; }
   .gauge-cap { font-size: 12px; }
   .alertstrip { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
-  .alert-ico { width: 44px; height: 44px; border-radius: 14px; flex: none;
+  .alert-ico { width: 44px; height: 44px; border-radius: 10px; flex: none;
     display: flex; align-items: center; justify-content: center; }
   .alert-ico.warn { background: #e8a13d; color: #26160a; }
   .alert-ico.bad { background: #e5484d; color: #fff5f3; }
@@ -161,7 +165,7 @@
 
   /* hero tiles (nested stats, lighter tint) + hand-drawn viz */
   .hero-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
-  .htile { background: rgba(255, 253, 249, .28); border-radius: 16px; padding: 12px 14px; }
+  .htile { background: rgba(255, 253, 249, .28); border-radius: 12px; padding: 12px 14px; }
   .htile .lab { font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em;
     color: var(--card-muted, var(--muted)); }
   .htile .val { font-size: 24px; font-weight: 800; letter-spacing: -.015em; margin-top: 2px; }
@@ -182,25 +186,32 @@
     color: var(--card-muted, var(--muted)); }
   .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 7px; }
   .sweep-readout { font-size: 12.5px; color: var(--muted); margin-top: 8px; min-height: 18px; }
-  .sweep-readout b { color: var(--ink); }
+  .bento .sweep-readout { color: var(--card-ink, var(--ink)); }
+  .sweep-readout b { color: inherit; }
 
   .row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
   input[type=text], input[type=number], select {
     background: var(--surface); color: var(--ink); border: 1px solid var(--border);
-    border-radius: 999px; padding: 8px 14px; font-size: 13px; font-family: inherit; outline: none;
+    border-radius: 10px; padding: 8px 14px; font-size: 13px; font-family: inherit; outline: none;
   }
   input[type=text] { min-width: 220px; }
   input:focus, select:focus { border-color: var(--hit); }
   button.primary {
-    background: #1e1e1e; color: #f5f1e8; border: 0; border-radius: 999px;
+    background: #1e1e1e; color: #f5f1e8; border: 0; border-radius: 10px;
     padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 700; font-family: inherit;
+    transition: transform .15s var(--spring), filter .15s var(--spring);
   }
+  button.primary:hover { filter: brightness(1.18); }
+  button.primary:active { transform: scale(.97); }
   html[data-theme="light"] button.primary, html[data-theme="auto"] button.primary { box-shadow: var(--shadow); }
   button.primary:disabled { opacity: .55; cursor: wait; }
-  button.danger { background: transparent; color: #e5484d; border: 1px solid currentColor; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 700; font-family: inherit; }
+  button.danger { background: transparent; color: #e5484d; border: 1px solid currentColor; border-radius: 10px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 700; font-family: inherit; transition: transform .15s var(--spring), background .15s var(--spring); }
+  button.danger:hover { background: rgba(229, 72, 77, .12); }
+  button.danger:active { transform: scale(.97); }
   .bento button.danger { color: var(--card-ink, var(--ink)); }
-  button.small { background: var(--surface2); color: var(--ink); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 650; font-family: inherit; }
+  button.small { background: var(--surface2); color: var(--ink); border: 1px solid var(--border); border-radius: 10px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 650; font-family: inherit; transition: transform .15s var(--spring), border-color .15s var(--spring); }
   button.small:hover { border-color: var(--muted); }
+  button.small:active { transform: scale(.97); }
   .bento button.small { background: rgba(255, 253, 249, .85); color: #1e1e1e; border-color: transparent; }
   label.toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; }
   .bento label.toggle { color: var(--card-muted, var(--muted)); }
@@ -213,7 +224,7 @@
   tbody tr:hover td { background: var(--surface2); }
   .prompt-cell { max-width: 380px; overflow-wrap: anywhere; }
   tr.hl td { background: rgba(242, 102, 77, .14); }
-  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 750; white-space: nowrap; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 7px; font-size: 11px; font-weight: 750; white-space: nowrap; }
   .badge.HIT { background: #1e1e1e; color: #f5f1e8; }
   .badge.MISS { background: #fffdf8; color: #92400e; border: 1px solid rgba(146, 64, 14, .4); }
   .badge.BYPASS { background: var(--surface2); color: var(--muted); }
@@ -245,39 +256,65 @@
     nav.side-nav { flex-direction: row; overflow-x: auto; }
     nav.side-nav button { width: auto; white-space: nowrap; }
     .side-foot { flex-direction: row; align-items: center; border-top: 0; padding: 8px 2px 0; }
-    .side-foot .tuneline { display: none; }
     .hero .big { font-size: 60px; }
   }
+  /* lowkey ambient drift: gradient orbs on transform-only keyframes
+     (compositor-friendly, no blur filters, no layout motion) */
+  #ambient { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+  #ambient i { position: absolute; border-radius: 50%;
+    background: radial-gradient(circle, var(--oc) 0%, transparent 68%);
+    animation: drift var(--od, 34s) ease-in-out infinite alternate; will-change: transform; }
+  #ambient i:nth-child(1) { --oc: rgba(242, 102, 77, .13); width: 46vmax; height: 46vmax;
+    left: -12vmax; top: -14vmax; --od: 38s; }
+  #ambient i:nth-child(2) { --oc: rgba(123, 127, 242, .12); width: 40vmax; height: 40vmax;
+    right: -10vmax; top: 22vh; --od: 30s; animation-delay: -12s; }
+  #ambient i:nth-child(3) { --oc: rgba(232, 161, 61, .10); width: 34vmax; height: 34vmax;
+    left: 30vw; bottom: -16vmax; --od: 44s; animation-delay: -22s; }
+  html[data-theme="light"] #ambient i:nth-child(1) { --oc: rgba(242, 102, 77, .10); }
+  html[data-theme="light"] #ambient i:nth-child(2) { --oc: rgba(123, 127, 242, .10); }
+  html[data-theme="light"] #ambient i:nth-child(3) { --oc: rgba(232, 161, 61, .09); }
+  @keyframes drift {
+    from { transform: translate3d(-4vmax, -2vmax, 0) scale(1); }
+    50% { transform: translate3d(3vmax, 2vmax, 0) scale(1.08); }
+    to { transform: translate3d(-2vmax, 4vmax, 0) scale(.96); }
+  }
+  .shell, .topbar { position: relative; z-index: 1; }
   @media (prefers-reduced-motion: reduce) {
     .tab.active { animation: none; }
     .skel::after { animation: none; }
+    #ambient i { animation: none; }
+    nav.side-nav button, button.primary, button.small, button.danger, #theme-toggle { transition: none; }
   }
 </style>
 </head>
 <body>
+<div id="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
 <div class="shell">
   <aside class="side">
-    <div class="mark">
+    <div class="mark" title="Semantic Cache proxy · ops console">
       <span class="mark-box">SC</span>
       <div><b>Semantic Cache</b><span>proxy · ops console</span></div>
     </div>
     <nav class="side-nav" aria-label="Dashboard sections">
-      <button data-tab="overview" class="active">
+      <button data-tab="overview" class="active" title="Overview" aria-label="Overview">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 2.5h5v5h-5zM8.5 2.5h5v5h-5zM2.5 8.5h5v5h-5zM8.5 8.5h5v5h-5z"/></svg>
-        Overview</button>
-      <button data-tab="cache">
+        <span class="navtext">Overview</span></button>
+      <button data-tab="cache" title="Cache Browser" aria-label="Cache Browser">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5.5 8 2.5l5.5 3v5L8 13.5 2.5 10.5v-5Z"/><path d="M2.5 5.5 8 8.5l5.5-3M8 8.5v5"/></svg>
-        Cache Browser</button>
-      <button data-tab="sweep">
+        <span class="navtext">Cache Browser</span></button>
+      <button data-tab="sweep" title="Threshold Lab" aria-label="Threshold Lab">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 5h11M2.5 11h11"/><circle cx="6" cy="5" r="1.8" fill="var(--surface)" /><circle cx="10.5" cy="11" r="1.8" fill="var(--surface)" /></svg>
-        Threshold Lab</button>
-      <button data-tab="logs">
+        <span class="navtext">Threshold Lab</span></button>
+      <button data-tab="logs" title="Request Log" aria-label="Request Log">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 4h8M5 8h8M5 12h8"/><circle cx="2.5" cy="4" r=".9" fill="currentColor" stroke="none"/><circle cx="2.5" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="2.5" cy="12" r=".9" fill="currentColor" stroke="none"/></svg>
-        Request Log</button>
+        <span class="navtext">Request Log</span></button>
     </nav>
     <div class="side-foot">
-      <div class="live"><span class="dot" id="live-dot" title="backend reachability"></span><span id="live-text">connecting…</span></div>
-      <button id="theme-toggle" title="color theme: dark / light / system">theme: dark</button>
+      <div class="live" title="backend reachability · threshold 0.85 · F1 0.857 measured"><span class="dot" id="live-dot" title="backend reachability"></span><span id="live-text">connecting…</span></div>
+      <button id="theme-toggle" title="color theme" aria-label="color theme">
+        <svg id="theme-ico-moon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7Z"/></svg>
+        <svg id="theme-ico-sun" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" hidden><circle cx="8" cy="8" r="3.2"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1"/></svg>
+      </button>
       <div class="tuneline">threshold <b>0.85</b> · F1 <b>0.857</b> measured</div>
     </div>
   </aside>
@@ -332,7 +369,9 @@
           <button class="primary" id="btn-refresh-metrics">Refresh now</button>
           <label class="toggle"><input type="checkbox" id="auto-metrics" checked> auto-refresh every 5 s</label>
         </div>
-        <div class="panel"><div class="label">Request mix over time (recent log)</div><div class="viz" id="trend-wrap"><div id="chart-trend"></div><div class="tip" id="trend-tip"></div></div><div class="hint" id="trend-hint"></div></div>
+        <div class="panel"><div class="label">Request mix over time (recent log)</div><div class="viz" id="trend-wrap"><div id="chart-trend"></div><div class="tip" id="trend-tip"></div></div>
+          <div class="legend" aria-hidden="true"><span><i style="background:#f2664d"></i>HIT</span><span><i style="background:#e8a13d"></i>MISS</span><span><i style="background:#8e8e96"></i>other</span></div>
+          <div class="hint" id="trend-hint"></div></div>
         <div class="panel">
           <div class="label">Per-user savings</div>
           <table>
@@ -467,7 +506,12 @@ const themeBtn = document.getElementById("theme-toggle");
 function paintTheme() {
   const pref = localStorage.getItem("scp-theme") || "dark";
   root.dataset.theme = pref === "system" ? "auto" : pref;
-  themeBtn.textContent = "theme: " + pref;
+  themeBtn.setAttribute("aria-label", "color theme: " + pref);
+  themeBtn.title = "color theme: " + pref + " (click to change)";
+  // NOTE: .hidden does not reflect on SVGElement (IDL is HTMLElement-only),
+  // so toggle display directly — otherwise both icons stay visible.
+  $("theme-ico-moon").style.display = pref === "dark" ? "" : "none";
+  $("theme-ico-sun").style.display = pref === "dark" ? "none" : "";
   refreshViz();
 }
 themeBtn.onclick = () => {
@@ -651,11 +695,6 @@ function drawTrend(t) {
       `<circle cx="${cx}" cy="${H - 8}" r="3" fill="${p.muted}" opacity=".45"/></g>` +
       (lx ? `<text x="${cx}" y="${H - 14}" text-anchor="middle" font-size="10" fill="${p.muted}">${lx}</text>` : "");
   });
-  // legend chips (drawn, not library)
-  s += `<g font-size="11" fill="${p.muted}">` +
-    `<rect x="${ML}" y="0" width="9" height="9" rx="2.5" fill="${p.hit}"/><text x="${ML + 13}" y="9">HIT</text>` +
-    `<rect x="${ML + 52}" y="0" width="9" height="9" rx="2.5" fill="${p.miss}"/><text x="${ML + 65}" y="9">MISS</text>` +
-    `<rect x="${ML + 116}" y="0" width="9" height="9" rx="2.5" fill="${p.flat}"/><text x="${ML + 129}" y="9">other</text></g>`;
   box.innerHTML = s + "</svg>";
   const tip = $("trend-tip"), wrap = $("trend-wrap");
   box.querySelectorAll(".tbar").forEach(g => {
