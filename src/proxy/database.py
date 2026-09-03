@@ -76,6 +76,17 @@ _SCHEMA_V2 = """
         tokens_saved   INTEGER NOT NULL DEFAULT 0,
         cost_saved_usd REAL    NOT NULL DEFAULT 0.0
     );
+
+    -- Phase 9.6 (F6): purge audit trail. Every purge writes who/when/what
+    -- so forensics can distinguish "data loss" from "someone purged".
+    -- Append-only; tiny (one row per purge action, not per entry).
+    CREATE TABLE IF NOT EXISTS purge_audit (
+        audit_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp    REAL    NOT NULL,
+        purged_count INTEGER NOT NULL DEFAULT 0,
+        entry_id     INTEGER,  -- NULL for full purges, set for single-entry
+        actor        TEXT    NOT NULL DEFAULT 'admin'
+    );
 """
 
 
