@@ -35,6 +35,12 @@ Also resolved: identical 6dp sims across runs are deterministic recomputation (s
 
 ---
 
+## 2026-09-04 — Battery methodology war (lessons for future test design)
+
+Black-box batteries kept producing verdicts that evaporated on forensics. Three confounds found and killed, in order: (1) shared run-id/family suffixes across prompts become shared embedding tokens and inflate cross-similarities (v1 T3, burst groups) - rule now: prompts carry zero artificial tokens, freshness comes from per-group purges; (2) PowerShell 5.1 silently empties a bare `$var` directly before `?` in expandable strings (`"of $c?"` sent truncated text - isolated repro, fixed with concat/`${}`); (3) reruns without clean rooms compare against last run's templates. Standing rule: exact repeats reuse identical variables, paraphrase pairs are fixed strings, everything else is purge-isolated. Open puzzle (decision-irrelevant): identical 6dp sims across runs whose inputs should differ slightly - leading theory is BGE determinism on near-identical comparisons; verdicts are outcome-level and stable regardless.
+
+---
+
 ## 2026-09-04 — Phase 9 semantic-trust fixes (shipped, live-verified)
 
 Owner's deep battery (`scripts/Test-SemCache-Deep.ps1`) found two defects: (1) eval/prod skew — threshold tuned on raw strings, production embedded `"[model]…\n[user]…"` text (live R=1.0/P~0.45 vs doc 0.9375/0.7895); (2) single-entity swaps HIT (Finland 0.87, Norway 0.90, Japan 0.87, population 0.91).
