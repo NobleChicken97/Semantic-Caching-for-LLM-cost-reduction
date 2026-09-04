@@ -79,6 +79,8 @@ The two lost directories are restored, the working tree is verified end-to-end (
   - [x] Y5 Gauge card composition (flex column, centered dial, 0–50× scale row) — live-verified via fast-loop + screenshot
   - [x] Y6 Dial zoom (204px render, scale untouched) — live-verified via fast-loop + screenshot
 
+- [x] **Phase 10 battery (2026-09-04): combinatorial entity/fact/date matrices + boring phrases + order/negation + encoding + conc20 + drift.** `data/phase10probes.json` + `scripts/test_phase10.py` (Python/httpx, token-mandatory clean rooms) + `tests/test_lifecycle.py` (TTL boundary, purge race, determinism). Combinatorial TP expanded 6→16 via per-country paraphrases. Session thanks downgraded to observe (shared-stem confound proven; true score re-measured clean).
+
 - [ ] **🟠 P1** **Docs refresh + adversarial battery (2026-09-04).**
   - [x] Q1 README: 135 -> 142 (3 spots), Lightsail production block, dashboard rewrite, monitor row, layout/scripts + artifacts lines, Phase 5/6 lines
   - [x] Q2 live-monitor retargeted Lightsail (Render 503s; read-only checks — 401 probe inapplicable in MOCK mode)
