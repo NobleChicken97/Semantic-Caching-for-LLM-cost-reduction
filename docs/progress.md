@@ -35,6 +35,12 @@ Also resolved: identical 6dp sims across runs are deterministic recomputation (s
 
 ---
 
+## 2026-09-04 — Phase 10 battery (combinatorial + edge cases, battery-only pass)
+
+`data/phase10probes.json` (45 countries, 15 births, 4 fact sets, 5 date pairs, greetings, 5x4 verbs, generics, order/negation pairs) + `scripts/test_phase10.py` (Python/httpx - PowerShell proven unsafe for quotes/unicode/control chars; token-mandatory clean rooms) + `tests/test_lifecycle.py` (TTL boundary incl. expired-row collection, purge-during-read race allowing only SQLITE_BUSY contention, embedding determinism >= 0.99999). 172 tests green. Live: 46 passed / 1 failed (empty messages array returns 200, validation gap) + 7 findings, combinatorial P=0.9403/R=1.0. Notable: author-swap test caught its own design bug pre-run (seeded all three works, guaranteeing exact 1.0 repeats - restructured to seed Hamlet only); drift deltas 0.0000 on all three probe pairs (local-vs-host weight-drift theory dead; fingerprint kept); conc20 single-flight perfect with byte-identical bodies; all-encoding 200s with zero 500s. Per spec: findings reported, production untouched.
+
+---
+
 ## 2026-09-04 — Gates closed: exact numbers + 6dp resolution + session truth
 
 Owner demanded the explicit gates, not summaries. Measured live, clean room, post-Fix-A/B:

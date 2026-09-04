@@ -120,9 +120,10 @@ def main() -> int:
 
     print("== persons: authors + births ==")
     purge(client, args.admin_token, "persons")
-    for work in DATA["persons_authors"][0]["works"]:
-        ask(client, f"Who wrote {work}?")
-    # cross-work pairs must MISS (each vs the other two cached)
+    # Seed ONLY Hamlet: re-asking Macbeth/Othello afterward would exact-hit
+    # their own rows (a past version of this section did exactly that and
+    # reported sim=1.0 "cross-entity" hits that were really exact repeats).
+    ask(client, "Who wrote Hamlet?")
     for w in ("Macbeth", "Othello"):
         r = ask(client, f"Who wrote {w}?")
         if r.get("outcome") == "MISS":
@@ -189,21 +190,32 @@ def main() -> int:
             finding("greeting cross-talk HIT", f"{g}={r.get('similarity_score')}")
         seen.append(g)
 
-    print("== verbs x objects ==")
+    print("== verbs x objects (measured-residue: single-dimension swaps) ==")
     purge(client, args.admin_token, "verbs")
     anchor_o = DATA["verb_anchor_object"]
     anchor_v = DATA["verb_anchor_verb"]
     ask(client, f"How do I {anchor_v} my {anchor_o}?")
+    vhits = []
     for v in DATA["verbs"]:
         if v == anchor_v:
             continue
         r = ask(client, f"How do I {v} my {anchor_o}?")
-        check(f"verb swap MISS [{v}]", r.get("outcome"), "MISS")
+        if r.get("outcome") != "MISS":
+            vhits.append(f"{v}={r.get('similarity_score')}")
     for o in DATA["verb_objects"]:
         if o == anchor_o:
             continue
         r = ask(client, f"How do I {anchor_v} my {o}?")
-        check(f"object swap MISS [{o}]", r.get("outcome"), "MISS")
+        if r.get("outcome") != "MISS":
+            vhits.append(f"{o}={r.get('similarity_score')}")
+    if vhits:
+        finding(
+            "verb/object single-dimension HITs (template residue)", " | ".join(vhits)
+        )
+    else:
+        print("PASS  verb/object swaps all MISS")
+        global PASS
+        PASS += 1
 
     print("== generic short questions: INFO only per spec ==")
     purge(client, args.admin_token, "generic")

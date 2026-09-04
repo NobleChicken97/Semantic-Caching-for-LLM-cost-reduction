@@ -97,7 +97,9 @@ The two lost directories are restored, the working tree is verified end-to-end (
   - [x] F4 Verify: 162/162 pytest green; sweep byte-identical (0.85 F1=0.8571); calibration re-run confirms shipped veto table → commit/push → CI → deploy → purge → live deep-battery → docs
   - [x] F5 Live battery (owner run + my re-run with token): recall 15/16 = doc exactly; precision 0.82 (beats doc 0.79); spotlight all-MISS; session TRUE 11/11 (thanks FAIL was shared-stem confound, proven by decisive suffix-free probe). Mystery null matched_entry_ids forensically solved: a full purge fired mid-battery (detached refs by design, zero orphans) — almost certainly a dashboard Purge ALL click during the run, not a product bug.
   - [x] F6 Follow-up DONE: purge audit trail (actor+timestamp log line, `purge_audit` table, `last_purge` in /metrics + dashboard line with tab-activation refresh) + 3 tests; 165/165 pytest green
-  - [x] Snapshot `semcache-20260904` initiated (pending → completes on its own)
+  - [x] Snapshot `semcache-20260904` AVAILABLE (verified via API)
+
+- [x] **Phase 10 battery (2026-09-04): combinatorial entity/fact/date matrices + boring phrases + order/negation + encoding + conc20 + drift.** `data/phase10probes.json` + `scripts/test_phase10.py` (Python/httpx, token-mandatory clean rooms) + `tests/test_lifecycle.py` (TTL boundary, purge race, determinism). Live: 46 passed / 1 failed (empty-array 200, validation gap) + 7 reported findings; combinatorial P=0.94/R=1.0; conc20 perfect; drift deltas 0.0000.
 
 - [ ] **🟥 P0** **Mega-battery v2 (2026-09-04).** Owner asked for wider variety + edge cases + run + analyze + fix.
   - [ ] G1 Write `scripts/Test-SemCache-Deep2.ps1` (multilingual, negations, numbers/dates, code pairs, injection/XSS observe, emoji, whitespace/unicode/case, roles, multi-turn, long-word, model/temperature/provider invariance, concurrency coalescing, burst latency)
