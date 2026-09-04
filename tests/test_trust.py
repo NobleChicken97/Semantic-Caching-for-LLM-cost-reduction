@@ -420,6 +420,21 @@ class TestVetoSignals:
             "How do I update my password?", "How do I reset my password?"
         )
 
+    def test_short_synonym_swap_exempt(self):
+        """Phase 10: "see you later"/"see you soon" (sim 0.96) vetoed by Fix C
+        — content 0.333, template 0.5 — on a two-shared-token "skeleton".
+        The shared-count gate exempts it; the embedding decides (HIT)."""
+        from proxy.cache import semantic_veto
+
+        assert not semantic_veto("see you later", "see you soon")
+        assert not semantic_veto("see you later!", "see you soon!")
+
+    def test_template_gate_boundary_three_shared_tokens(self):
+        """door/window shares exactly three ({is,the,open}) — still vetoed."""
+        from proxy.cache import semantic_veto
+
+        assert semantic_veto("Is the door open?", "Is the window open?")
+
     def test_typo_bridge_saves(self):
         from proxy.cache import semantic_veto
 

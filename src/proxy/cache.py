@@ -26,6 +26,7 @@ from .text import (
     has_negation,
     jaccard,
     number_tokens,
+    shared_template_count,
     strip_tags,
     template_jaccard,
     typo_bridged,
@@ -46,6 +47,15 @@ ENTITY_TEMPLATE_FLOOR = 0.2
 # template 0.333, nearest target above it 0.5 — MIN=0.4 splits both with margin.
 VETO_CONTENT_MAX = 0.34
 VETO_TEMPLATE_MIN = 0.4
+# Shared-skeleton gate (Phase 10): the "same skeleton" claim needs >= 3
+# shared template tokens. Two shared stopwords ("see you") are not structure,
+# and template Jaccard on tiny sets clears MIN automatically — without this
+# gate "see you later"/"see you soon" (content 0.333, template 0.5, sim 0.96)
+# vetoed a true paraphrase. Every shipped veto target shares >= 3 (verb
+# swaps share 4-5, door/window shares exactly 3), so protection is intact;
+# 4+-token synonym swaps ("talk to you later/soon") remain a documented
+# residual — vetoed, and accepted as the rule's recall price.
+VETO_TEMPLATE_SHARED_MIN = 3
 
 # Warn only once per process when the semantic scan exceeds the configured
 # entry cap — a slow-degradation tripwire, not a hard failure.
@@ -69,8 +79,11 @@ def semantic_veto(query_text: str, candidate_text: str) -> bool:
       2. fact-type swap — disjoint keyword sets, ungated (no labeled
          positive carries disjoint fact keywords).
       3. template collision (Fix C) — content overlap <= VETO_CONTENT_MAX
-         with template overlap >= VETO_TEMPLATE_MIN, unless a typo bridge
-         connects every differing word (difflib >= 0.8 both directions).
+          with template overlap >= VETO_TEMPLATE_MIN and >=
+          VETO_TEMPLATE_SHARED_MIN shared template tokens, unless a typo
+          bridge connects every differing word (difflib >= 0.8 both
+          directions). The shared-count gate exempts tiny utterances where
+          template Jaccard is vacuous ("see you later"/"see you soon").
       4. negation/antonym (Fix D) — negation markers mismatched, or token
          multisets equal after exactly one listed antonym substitution.
       5. number mismatch — both sides carry digit tokens and the sets differ
@@ -93,6 +106,7 @@ def semantic_veto(query_text: str, candidate_text: str) -> bool:
     if (
         jaccard(query, candidate) <= VETO_CONTENT_MAX
         and template_jaccard(query, candidate) >= VETO_TEMPLATE_MIN
+        and shared_template_count(query, candidate) >= VETO_TEMPLATE_SHARED_MIN
         and not typo_bridged(query, candidate)
     ):
         return True

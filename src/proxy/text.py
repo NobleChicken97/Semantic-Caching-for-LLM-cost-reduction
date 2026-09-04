@@ -212,6 +212,21 @@ def template_jaccard(a: str, b: str) -> float:
     return len(sa & sb) / len(sa | sb)
 
 
+def shared_template_count(a: str, b: str) -> int:
+    """Count of shared lowercased word tokens: the skeleton's strut count.
+
+    Backs the Fix C shared-skeleton gate in ``semantic_veto``. Fewer than
+    three shared tokens ("see you", "how do") is not evidence of shared
+    structure — two shared stopwords occur across vast numbers of unrelated
+    utterances, while template Jaccard on tiny token sets still clears 0.4
+    automatically (2 shared of 4 union = 0.5). The gate therefore requires
+    >= 3 shared tokens before a "same skeleton" claim can veto.
+    """
+    sa = set(re.findall(r"\w+", a.lower()))
+    sb = set(re.findall(r"\w+", b.lower()))
+    return len(sa & sb)
+
+
 def typo_bridged(a: str, b: str) -> bool:
     """True when every unshared content word has a near-duplicate across.
 

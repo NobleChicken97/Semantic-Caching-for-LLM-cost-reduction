@@ -52,6 +52,9 @@ def main() -> None:
             "What is the capital of France?",
             False,
         ),
+        # Phase 10 regression probe: true paraphrase the Fix C shared-count
+        # gate must never veto (sim ~0.96, veto must stay False).
+        ("P-SEEYOU", "see you later", "see you soon", True),
     ]
     rows = [
         (p["pair_id"], p["prompt_a"], p["prompt_b"], bool(p["should_match"]))
