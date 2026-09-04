@@ -1,7 +1,7 @@
 {
     "countries_seed": {
         "country": "France",
-        "question": "What is the capital of France?",
+        "question": "What is the capital of France?"
     },
     "countries": [
         "Germany",
@@ -48,7 +48,7 @@
         "Bhutan",
         "Mongolia",
         "Kazakhstan",
-        "Uzbekistan",
+        "Uzbekistan"
     ],
     "persons_authors": [
         {"name": "Shakespeare", "works": ["Hamlet", "Macbeth", "Othello"]}
@@ -68,7 +68,7 @@
         "Frida Kahlo",
         "Mozart",
         "Beethoven",
-        "Vincent van Gogh",
+        "Vincent van Gogh"
     ],
     "fact_sets": [
         {
@@ -77,8 +77,8 @@
                 "capital": "What is the capital of France?",
                 "population": "What is the population of France?",
                 "currency": "What is the currency of France?",
-                "language": "What language is spoken in France?",
-            },
+                "language": "What language is spoken in France?"
+            }
         },
         {
             "entity": "Japan",
@@ -86,8 +86,8 @@
                 "capital": "What is the capital of Japan?",
                 "population": "What is the population of Japan?",
                 "currency": "What is the currency of Japan?",
-                "language": "What language is spoken in Japan?",
-            },
+                "language": "What language is spoken in Japan?"
+            }
         },
         {
             "entity": "Brazil",
@@ -95,8 +95,8 @@
                 "capital": "What is the capital of Brazil?",
                 "population": "What is the population of Brazil?",
                 "currency": "What is the currency of Brazil?",
-                "area": "What is the area of Brazil?",
-            },
+                "area": "What is the area of Brazil?"
+            }
         },
         {
             "entity": "Germany",
@@ -104,31 +104,31 @@
                 "capital": "What is the capital of Germany?",
                 "population": "What is the population of Germany?",
                 "timezone": "What time zone is Germany in?",
-                "founded": "When was modern Germany founded?",
-            },
-        },
+                "founded": "When was modern Germany founded?"
+            }
+        }
     ],
     "dates_numbers": [
         [
             "In which year did the Titanic sink?",
-            "In which year did the Berlin Wall fall?",
+            "In which year did the Berlin Wall fall?"
         ],
         [
             "How many players are on a soccer team?",
-            "How many players are on a basketball team?",
+            "How many players are on a basketball team?"
         ],
         ["What is 15 percent of 200?", "What is 20 percent of 200?"],
         ["How many days are in a leap year?", "How many days are in a decade?"],
         [
             "What year did the internet become public?",
-            "What year did the first iPhone launch?",
-        ],
+            "What year did the first iPhone launch?"
+        ]
     ],
     "greetings_same": [
         ["hello", "hi there"],
         ["good afternoon", "good evening"],
         ["see you later", "see you soon"],
-        ["bye", "goodbye"],
+        ["bye", "goodbye"]
     ],
     "greetings_cross": [
         "hello",
@@ -136,7 +136,7 @@
         "good afternoon",
         "see you later",
         "bye",
-        "that's all, thanks",
+        "that's all, thanks"
     ],
     "verbs": ["reset", "change", "update", "delete", "recover"],
     "verb_objects": ["password", "email", "username", "phone number"],
@@ -147,19 +147,19 @@
         "can you help?",
         "is this working?",
         "are you there?",
-        "what can you do?",
+        "what can you do?"
     ],
     "order_pairs": [
         {
             "a": "what is the capital of France?",
             "b": "the capital of France is what?",
-            "expect": "HIT",
+            "expect": "HIT"
         },
-        {"a": "Who wrote Hamlet?", "b": "Hamlet was written by whom?", "expect": "HIT"},
+        {"a": "Who wrote Hamlet?", "b": "Hamlet was written by whom?", "expect": "HIT"}
     ],
     "negation_pairs": [
         ["Is Paris the capital of France?", "Is Paris not the capital of France?"],
         ["How do I enable notifications?", "How do I disable notifications?"],
-        ["Is the door open?", "Is the door closed?"],
-    ],
+        ["Is the door open?", "Is the door closed?"]
+    ]
 }
