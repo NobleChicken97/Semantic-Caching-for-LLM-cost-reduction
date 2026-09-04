@@ -72,7 +72,7 @@ Precision/recall across thresholds against a 31-pair labeled dataset (full analy
 | Embeddings | sentence-transformers · `BAAI/bge-small-en-v1.5` (CPU) |
 | Vector math | numpy (dot-product cosine on unit vectors) |
 | Storage | SQLite (WAL mode, foreign keys ON) |
-| Testing | pytest + pytest-asyncio (179 tests) |
+| Testing | pytest + pytest-asyncio (181 tests) |
 
 ---
 
@@ -320,7 +320,7 @@ Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the 
 │   ├── eval.py          Threshold sweep: batch embed → classify → P/R/F1
 │   ├── database.py      SQLite schema + 31 labeled test pairs
 │   └── ...
-├── tests/               179 tests (unit + integration)
+├── tests/               181 tests (unit + integration)
 ├── scripts/             Sweep runner, JSON exporter, CI smoke suite, host provision/deploy/verify scripts, adversarial PowerShell battery (`Test-SemCache.ps1`)
 │   ├── .github/         CI workflow (lint / test matrix / docker smoke / audit) + Dependabot
 ├── data/labeled_test_pairs.json   Reproducible validation dataset

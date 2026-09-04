@@ -41,6 +41,12 @@ Also resolved: identical 6dp sims across runs are deterministic recomputation (s
 
 ---
 
+## 2026-09-04 — Phase 10 closed (shared-skeleton gate, 16/16 recall)
+
+Live battery on the fix commit: combinatorial TP=16 FN=0 (recall 1.0, precision 0.9851), STRICT 48/48, drift deltas 0.0000, conc20 perfect. Residual findings down to 3 knowns: soccer/basketball threshold FP (0.871) + 2 greeting cross-talks. 181/181 pytest green. Verb swaps, negation, percent, see-you all behave correctly live.
+
+---
+
 ## 2026-09-04 — Phase 10 build (veto round 2 + combinatorial recall + session honesty)
 
 Owner review upgraded the plan mid-build: empty-array 422 shipped solo; Fix C redesigned (pure floor provably kills AI-definition/sci-fi at Jaccard 0.0, so template-gate + difflib bridge instead, calibrated); Fix D negation/antonym guard + number-mismatch veto added; session thanks downgraded to observe (shared-stem confound proven, true score re-measured clean). Calibration table over all 31 pairs: zero positives fire any of the 5 signals. Veto gate widened 0.6 to 0.4 on measured margins (nearest positive 0.333, nearest target 0.5). 179/179 pytest green (20 trust + 4 lifecycle + 3 audit new).
