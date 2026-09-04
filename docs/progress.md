@@ -35,6 +35,16 @@ Also resolved: identical 6dp sims across runs are deterministic recomputation (s
 
 ---
 
+## 2026-09-04 — Gates closed: exact numbers + 6dp resolution + session truth
+
+Owner demanded the explicit gates, not summaries. Measured live, clean room, post-Fix-A/B:
+- **Phase A precision 0.8182 (TN=9, FP=2 strict + 4 borderline), recall 0.9375 (15/16)** - gate (>=0.75) CLEARED, beats documented 0.7895. Same single FN as the sweep (pair 23).
+- **Session 11/11 TRUE.** The thanks/greeting FAIL was shared-stem confound, proven by decisive suffix-free probe (purge, "Good morning." MISS, "Thanks, that is all!" MISS). Lesson reinforced: any shared token across test prompts is guilty until proven innocent.
+- **Spotlight all-MISS**, veto and threshold both holding; K template 4/20 measured residue; concurrency single-flight perfect; empty-model isolation correct.
+- **6dp identical-similarities: RESOLVED, and the resolution is embarrassing in the instructive way.** Byte experiment proved embedding inputs reach the model intact and distinct (lengths differ, self-sim exactly 1.0), and forensics showed suffixed variants scoring differently (0.879-0.884) from clean ones. The "identical" numbers were same-input deterministic recomputations: fixed strings + per-group purges mean every run compares byte-identical pairs, so of course the sims repeat. No canonicalization bug, no BGE quirk, no staleness - just the same computation giving the same answer, misread across a chaotic session as different inputs agreeing. Process rule earned: distrust cross-output comparisons from memory; the DB + byte dumps are the record.
+
+---
+
 ## 2026-09-04 — Battery methodology war (lessons for future test design)
 
 Black-box batteries kept producing verdicts that evaporated on forensics. Three confounds found and killed, in order: (1) shared run-id/family suffixes across prompts become shared embedding tokens and inflate cross-similarities (v1 T3, burst groups) - rule now: prompts carry zero artificial tokens, freshness comes from per-group purges; (2) PowerShell 5.1 silently empties a bare `$var` directly before `?` in expandable strings (`"of $c?"` sent truncated text - isolated repro, fixed with concat/`${}`); (3) reruns without clean rooms compare against last run's templates. Standing rule: exact repeats reuse identical variables, paraphrase pairs are fixed strings, everything else is purge-isolated. Open puzzle (decision-irrelevant): identical 6dp sims across runs whose inputs should differ slightly - leading theory is BGE determinism on near-identical comparisons; verdicts are outcome-level and stable regardless.

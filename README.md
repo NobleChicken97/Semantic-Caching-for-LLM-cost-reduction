@@ -339,6 +339,7 @@ Design notes: `MOCK_LLM=true` workflow-wide means CI can never spend money; the 
 - [x] Phase 5 — metrics + dashboard (`/dashboard` — FastAPI + hand-drawn SVG viz, single service; no chart library)
 - [x] Phase 6 — deployment artifacts (`Dockerfile` + `render.yaml` + `Procfile`, Docker-verified locally) · production: `https://semcache.noblechicken.me` (Lightsail Small 2GB, persistent SQLite, Caddy auto-HTTPS, ECR auto-deploy) — see [Deployment](#deployment-phase-6)
 - [x] Phase 7 — BYOK multi-user: provider allowlist (openrouter/gemini), HMAC-derived user isolation, per-user cache scoping, tokens-saved headline metric, 30-day log retention with permanent rollup
+- [x] Phase 9 — semantic-trust fixes: message-only embeddings (eval/prod skew closed), two-signal entity/fact veto, purge audit trail; live re-measured R=0.9375/P=0.82, spotlight all-MISS, 168 tests green
 - [ ] Stretch — wire in front of a downstream project; report before/after costs
 
 ## Dashboard
