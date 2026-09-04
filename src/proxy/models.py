@@ -22,7 +22,7 @@ class ChatMessage(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     model: str
-    messages: list[ChatMessage]
+    messages: list[ChatMessage] = Field(min_length=1)
     temperature: float | None = Field(default=1.0, ge=0, le=2)
     max_tokens: int | None = None
     top_p: float | None = Field(default=1.0, ge=0, le=1)

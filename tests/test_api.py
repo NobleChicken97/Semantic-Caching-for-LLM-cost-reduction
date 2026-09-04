@@ -733,6 +733,16 @@ class TestPurge:
         assert resp.json()["cache_metadata"]["outcome"] == "MISS"
 
 
+class TestRequestValidation:
+    @pytest.mark.asyncio
+    async def test_empty_messages_is_422(self, client):
+        """Zero messages is not a request (OpenAI requires >= 1)."""
+        resp = await client.post(
+            "/v1/chat/completions", json={"model": "gpt-3.5-turbo", "messages": []}
+        )
+        assert resp.status_code == 422
+
+
 class TestThresholdSweepEndpoint:
     @pytest.mark.asyncio
     async def test_sweep_returns_structure(self, client):
