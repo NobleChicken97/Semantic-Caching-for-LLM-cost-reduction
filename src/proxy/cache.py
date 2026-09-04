@@ -18,17 +18,34 @@ import numpy as np
 
 from .config import get_settings
 from .database import get_connection
-from .text import content_words, entities, fact_types, jaccard, strip_tags
+from .text import (
+    antonym_swapped_equal,
+    content_words,
+    entities,
+    fact_types,
+    has_negation,
+    jaccard,
+    number_tokens,
+    strip_tags,
+    template_jaccard,
+    typo_bridged,
+)
 
 logger = logging.getLogger("proxy")
 
-# Fix B veto band (Phase 9, calibrated in scripts/calibrate_trust.py):
-# the capitalized-entity veto fires only when the pair ALSO shares enough
-# template (Jaccard >= floor). Without the gate, true paraphrases whose
-# entity surfaces differ ("WWII" vs "World War II") would be vetoed —
-# measured recall risk on a labeled positive. The fact-type signal needs no
-# gate: zero labeled positives carry disjoint fact keywords.
+# Veto bands (Phase 9, all calibrated in scripts/calibrate_trust.py against
+# the 31 labeled pairs — zero positives may fire; the script is the proof).
+# ENTITY_TEMPLATE_FLOOR gates signal 1 so aliasing entities ("WWII" vs
+# "World War II", template overlap 0.0) never veto a true paraphrase.
 ENTITY_TEMPLATE_FLOOR = 0.2
+# Fix C band: content overlap at/below MAX with template overlap at/above
+# MIN means "same skeleton, different content words" — unless every differing
+# word has a near-duplicate across (typo bridge). Calibrated: the "captial"
+# typo pair sits at (0.33, 0.71) and is bridged; verb swaps sit at the same
+# coordinates unbridged and must veto; nearest labeled positive below MIN is
+# template 0.333, nearest target above it 0.5 — MIN=0.4 splits both with margin.
+VETO_CONTENT_MAX = 0.34
+VETO_TEMPLATE_MIN = 0.4
 
 # Warn only once per process when the semantic scan exceeds the configured
 # entry cap — a slow-degradation tripwire, not a hard failure.
@@ -40,21 +57,26 @@ def _hash_prompt(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
 
-def entity_veto(query_text: str, candidate_text: str) -> bool:
-    """True when a semantic HIT must be refused (Phase 9, Fix B).
+def semantic_veto(query_text: str, candidate_text: str) -> bool:
+    """True when a semantic HIT must be refused (Phase 9, Fix B/C/D).
 
-    Two independent signals; either one fires the veto:
-      1. entity swap — both sides carry capitalized tokens with zero
-         intersection (Finland vs France), AND the pair shares enough
-         template (Jaccard >= ENTITY_TEMPLATE_FLOOR) to rule out true
-         paraphrases with aliasing entities ("WWII" vs "World War II").
-      2. fact-type swap — both sides carry fact-type keywords with zero
-         intersection ("capital" vs "population" on the same entity).
-    Both signals require evidence on BOTH sides: single-side absence
-    (math, greetings, typos) can never veto. Role tags are stripped before
-    comparison so the veto sees exactly what calibration measured.
+    Five independent signals; any one fires the veto. Every signal requires
+    evidence on BOTH sides (single-side absence can never veto) and every
+    constant below was calibrated against the 31 labeled pairs with zero
+    positives firing (see scripts/calibrate_trust.py):
+      1. entity swap — disjoint capitalized-token sets (sentence-initial
+         excluded) plus shared template (Jaccard >= ENTITY_TEMPLATE_FLOOR).
+      2. fact-type swap — disjoint keyword sets, ungated (no labeled
+         positive carries disjoint fact keywords).
+      3. template collision (Fix C) — content overlap <= VETO_CONTENT_MAX
+         with template overlap >= VETO_TEMPLATE_MIN, unless a typo bridge
+         connects every differing word (difflib >= 0.8 both directions).
+      4. negation/antonym (Fix D) — negation markers mismatched, or token
+         multisets equal after exactly one listed antonym substitution.
+      5. number mismatch — both sides carry digit tokens and the sets differ
+         ("15/200" vs "20/200"; "2" vs "2" is safe).
     Returns False for everything else — the cosine threshold remains the
-    primary gate.
+    primary gate, and vetoed lookups surface as MISS.
     """
     query, candidate = strip_tags(query_text), strip_tags(candidate_text)
     qe, ce = entities(query), entities(candidate)
@@ -66,7 +88,20 @@ def entity_veto(query_text: str, candidate_text: str) -> bool:
     ):
         return True
     qf, cf = fact_types(query), fact_types(candidate)
-    return bool(qf and cf and not (qf & cf))
+    if qf and cf and not (qf & cf):
+        return True
+    if (
+        jaccard(query, candidate) <= VETO_CONTENT_MAX
+        and template_jaccard(query, candidate) >= VETO_TEMPLATE_MIN
+        and not typo_bridged(query, candidate)
+    ):
+        return True
+    if has_negation(query) != has_negation(candidate):
+        return True
+    if antonym_swapped_equal(query, candidate):
+        return True
+    qn, cn = number_tokens(query), number_tokens(candidate)
+    return bool(qn and cn and qn != cn)
 
 
 def _serialize_embedding(vec: np.ndarray) -> bytes:
@@ -272,10 +307,10 @@ def _semantic_lookup(
         if best_entry is None:
             return None
 
-        # Fix B veto: a cleared threshold is necessary but not sufficient.
+        # Veto (Fix B/C/D): a cleared threshold is necessary but not sufficient.
         # Refused hits return MISS (and are logged as MISS) — the candidate
         # stays stored, so an EXACT repeat still hits via the exact tier.
-        if best_prompt is not None and entity_veto(prompt_text, best_prompt):
+        if best_prompt is not None and semantic_veto(prompt_text, best_prompt):
             logger.info(
                 "Semantic HIT vetoed (entity/fact mismatch above threshold %.3f).",
                 best_score,

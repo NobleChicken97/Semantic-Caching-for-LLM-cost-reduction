@@ -152,18 +152,18 @@ class TestLexicalHelpers:
         assert jaccard("What is 2 + 2?", "Calculate two plus two.") > 0.0
 
 
-class TestEntityVeto:
+class TestSemanticVeto:
     def test_entity_swap_fires(self):
-        from proxy.cache import entity_veto
+        from proxy.cache import semantic_veto
 
-        assert entity_veto(
+        assert semantic_veto(
             "What is the capital of Finland?", "What is the capital of France?"
         )
 
     def test_fact_swap_fires(self):
-        from proxy.cache import entity_veto
+        from proxy.cache import semantic_veto
 
-        assert entity_veto(
+        assert semantic_veto(
             "What is the population of France?",
             "What is the capital of France?",
         )
@@ -171,28 +171,28 @@ class TestEntityVeto:
     def test_alias_paraphrase_survives(self):
         """WWII vs World War II: disjoint surfaces, same entity family, but
         near-zero template overlap, so the gate holds the veto off."""
-        from proxy.cache import entity_veto
+        from proxy.cache import semantic_veto
 
-        assert not entity_veto(
+        assert not semantic_veto(
             "What year did WWII end?", "When did World War II finish?"
         )
 
     def test_identical_never_vetoes(self):
-        from proxy.cache import entity_veto
+        from proxy.cache import semantic_veto
 
         q = "What is the capital of France?"
-        assert not entity_veto(q, q)
+        assert not semantic_veto(q, q)
 
     def test_single_side_empty_never_vetoes(self):
-        from proxy.cache import entity_veto
+        from proxy.cache import semantic_veto
 
-        assert not entity_veto("What is 2 + 2?", "Calculate two plus two.")
-        assert not entity_veto("How do I reset my password?", "Reset my password!")
+        assert not semantic_veto("What is 2 + 2?", "Calculate two plus two.")
+        assert not semantic_veto("How do I reset my password?", "Reset my password!")
 
     def test_mixed_case_never_vetoes(self):
-        from proxy.cache import entity_veto
+        from proxy.cache import semantic_veto
 
-        assert not entity_veto("what is the capital of france?", "WHAT IS IT?")
+        assert not semantic_veto("what is the capital of france?", "WHAT IS IT?")
 
     def test_degenerate_candidate_skipped(self):
         """A cached entry with no content words (":)") must never win a
@@ -388,3 +388,69 @@ class TestPurgeAudit:
         # ASGI transport reports the real client IP (127.0.0.1), which is
         # exactly the identity the route records.
         assert m["last_purge"]["actor"] == "127.0.0.1"
+
+
+class TestVetoNeverFiresOnPositives:
+    """Systematic recall guard: the veto must stay silent on every labeled
+    paraphrase, whatever future tuning does to the bands above."""
+
+    def test_no_labeled_positive_is_vetoed(self):
+        import json
+        from pathlib import Path
+
+        from proxy.cache import semantic_veto
+
+        pairs = json.loads(
+            Path("data/labeled_test_pairs.json").read_text(encoding="utf-8")
+        )["pairs"]
+        positives = [p for p in pairs if p["should_match"]]
+        assert len(positives) == 16
+        for p in positives:
+            assert not semantic_veto(p["prompt_a"], p["prompt_b"]), p["pair_id"]
+
+
+class TestVetoSignals:
+    def test_template_collision_fires(self):
+        from proxy.cache import semantic_veto
+
+        assert semantic_veto(
+            "How do I change my username?", "How do I reset my password?"
+        )
+        assert semantic_veto(
+            "How do I update my password?", "How do I reset my password?"
+        )
+
+    def test_typo_bridge_saves(self):
+        from proxy.cache import semantic_veto
+
+        assert not semantic_veto(
+            "What is the captial of France?", "What is the capital of France?"
+        )
+
+    def test_negation_mismatch_fires(self):
+        from proxy.cache import semantic_veto
+
+        assert semantic_veto(
+            "Is Paris the capital of France?", "Is Paris not the capital?"
+        )
+        assert semantic_veto("How do I enable X?", "How do I disable X?")
+        assert not semantic_veto(
+            "My laptop won't turn on.", "My laptop does not start."
+        )
+
+    def test_antonym_swap_fires(self):
+        from proxy.cache import semantic_veto
+
+        assert semantic_veto("Is the door open?", "Is the door closed?")
+        # Different questions, different objects: veto is the correct
+        # outcome here too (door vs window share only a template).
+        assert semantic_veto("Is the door open?", "Is the window open?")
+
+    def test_number_mismatch_fires(self):
+        from proxy.cache import semantic_veto
+
+        assert semantic_veto("What is 15 percent of 200?", "What is 20 percent of 200?")
+        assert not semantic_veto("What is 2 + 2?", "Calculate two plus two.")
+        assert not semantic_veto(
+            "What is the capital of France?", "Tell me the capital."
+        )

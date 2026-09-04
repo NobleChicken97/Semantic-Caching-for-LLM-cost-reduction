@@ -117,6 +117,15 @@ def main() -> int:
     print(f"entity matrix: TN={tn} FP={len(fp)}")
     for f in fp:
         finding("entity-matrix HIT", f)
+    # Recall side of the generator: paraphrases must still HIT (veto shares
+    # the entity, so these prove the guard doesn't eat true positives).
+    for country in DATA["countries"][:10]:
+        r = ask(client, f"Tell me the capital of {country}?")
+        if r.get("outcome") == "HIT":
+            CONF["TP"] += 1
+        else:
+            CONF["FN"] += 1
+            finding("entity-paraphrase MISS (recall!)", country)
 
     print("== persons: authors + births ==")
     purge(client, args.admin_token, "persons")
