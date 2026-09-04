@@ -187,10 +187,10 @@ $session = @(
     @{ q = "Who won the 2022 World Cup ($($SS.w1))?"; e = "MISS" },
     @{ q = "Who won the last World Cup ($($SS.w2))?"; e = $null },
     @{ q = "How do I reset my password ($($SS.p1))?"; e = "HIT" },
-    @{ q = "Thanks, that is all ($($SS.th))!"; e = $null },
-    # ^ was asserted MISS, then proven a shared-stem artifact, then measured
-    # suffix-free: MISS on threshold alone. Observe-only now, so a future
-    # regression shows up as a data point, never a false alarm.
+    # Thanks was asserted MISS, then proven a shared-stem artifact, then
+    # measured suffix-free: MISS on threshold alone. Observe-only now, so a
+    # future regression shows up as a data point, never a false alarm.
+    @{ q = "Thanks, that is all ($($SS.th))!"; e = $null }
 )
 $sp = 0; $sf = 0
 foreach ($s in $session) {
